@@ -57,4 +57,3 @@ dkms.conf
 # ignored files
 build/*
 test/*
-
