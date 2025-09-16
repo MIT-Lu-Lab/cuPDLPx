@@ -359,14 +359,25 @@ static bool ensure_column_capacity(MpsParserState *state)
 
     size_t new_cap = (state->col_capacity == 0) ? 256 : state->col_capacity * 2;
 
-    state->objective_coeffs = (double *)realloc(state->objective_coeffs, new_cap * sizeof(double));
-    state->var_lower_bounds = (double *)realloc(state->var_lower_bounds, new_cap * sizeof(double));
-    state->var_upper_bounds = (double *)realloc(state->var_upper_bounds, new_cap * sizeof(double));
-
-    if (!state->objective_coeffs || !state->var_lower_bounds || !state->var_upper_bounds)
+    if (new_cap < state->col_capacity)
     {
         return false;
     }
+
+    double *new_obj = realloc(state->objective_coeffs, new_cap * sizeof(double));
+    double *new_lb  = realloc(state->var_lower_bounds, new_cap * sizeof(double));
+    double *new_ub  = realloc(state->var_upper_bounds, new_cap * sizeof(double));
+
+    if (!new_obj || !new_lb || !new_ub) {
+        if (new_obj && new_obj != state->objective_coeffs) free(new_obj);
+        if (new_lb  && new_lb  != state->var_lower_bounds) free(new_lb);
+        if (new_ub  && new_ub  != state->var_upper_bounds) free(new_ub);
+        return false;
+    }
+
+    state->objective_coeffs = new_obj;
+    state->var_lower_bounds = new_lb;
+    state->var_upper_bounds = new_ub;
 
     for (size_t i = state->col_capacity; i < new_cap; ++i)
     {
