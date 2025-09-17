@@ -336,11 +336,9 @@ static int add_coo_entry(CooMatrix *coo, int row, int col, double value)
     if (coo->nnz >= coo->capacity)
     {
         size_t new_capacity = (coo->capacity == 0) ? 1024 : coo->capacity * 2;
-        coo->row_indices = (int *)realloc(coo->row_indices, new_capacity * sizeof(int));
-        coo->col_indices = (int *)realloc(coo->col_indices, new_capacity * sizeof(int));
-        coo->values = (double *)realloc(coo->values, new_capacity * sizeof(double));
-        if (!coo->row_indices || !coo->col_indices || !coo->values)
-            return -1;
+        coo->row_indices = (int *)safe_realloc(coo->row_indices, new_capacity * sizeof(int));
+        coo->col_indices = (int *)safe_realloc(coo->col_indices, new_capacity * sizeof(int));
+        coo->values = (double *)safe_realloc(coo->values, new_capacity * sizeof(double));
         coo->capacity = new_capacity;
     }
     coo->row_indices[coo->nnz] = row;
@@ -364,20 +362,9 @@ static bool ensure_column_capacity(MpsParserState *state)
         return false;
     }
 
-    double *new_obj = realloc(state->objective_coeffs, new_cap * sizeof(double));
-    double *new_lb  = realloc(state->var_lower_bounds, new_cap * sizeof(double));
-    double *new_ub  = realloc(state->var_upper_bounds, new_cap * sizeof(double));
-
-    if (!new_obj || !new_lb || !new_ub) {
-        if (new_obj && new_obj != state->objective_coeffs) free(new_obj);
-        if (new_lb  && new_lb  != state->var_lower_bounds) free(new_lb);
-        if (new_ub  && new_ub  != state->var_upper_bounds) free(new_ub);
-        return false;
-    }
-
-    state->objective_coeffs = new_obj;
-    state->var_lower_bounds = new_lb;
-    state->var_upper_bounds = new_ub;
+    state->objective_coeffs = (double *)safe_realloc(state->objective_coeffs, new_cap * sizeof(double));
+    state->var_lower_bounds = (double *)safe_realloc(state->var_lower_bounds, new_cap * sizeof(double));
+    state->var_upper_bounds = (double *)safe_realloc(state->var_upper_bounds, new_cap * sizeof(double));
 
     for (size_t i = state->col_capacity; i < new_cap; ++i)
     {
@@ -575,9 +562,7 @@ static int parse_rows_section(MpsParserState *state, char **tokens, int n_tokens
     if (state->num_buffered_rows >= state->buffered_rows_capacity)
     {
         state->buffered_rows_capacity = (state->buffered_rows_capacity == 0) ? 64 : state->buffered_rows_capacity * 2;
-        state->buffered_rows = (BufferedRow *)realloc(state->buffered_rows, state->buffered_rows_capacity * sizeof(BufferedRow));
-        if (!state->buffered_rows)
-            return -1;
+        state->buffered_rows = (BufferedRow *)safe_realloc(state->buffered_rows, state->buffered_rows_capacity * sizeof(BufferedRow));
     }
 
     BufferedRow *new_row = &state->buffered_rows[state->num_buffered_rows];
@@ -627,9 +612,7 @@ static int finalize_rows(MpsParserState *state)
             if (current_size >= state->constraint_capacity)
             {
                 state->constraint_capacity = (state->constraint_capacity == 0) ? 64 : state->constraint_capacity * 2;
-                state->constraint_types = (char *)realloc(state->constraint_types, state->constraint_capacity * sizeof(char));
-                if (!state->constraint_types)
-                    return -1;
+                state->constraint_types = (char *)safe_realloc(state->constraint_types, state->constraint_capacity * sizeof(char));
             }
             namemap_put(&state->row_map, state->buffered_rows[i].name);
             state->constraint_types[current_size] = type;
