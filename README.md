@@ -46,7 +46,7 @@ If the solver runs and creates output files, your installation is successful.
 The solver is invoked with the following syntax, specifying an input file and an output directory.
 
 ```bash
-./cupdlpx [OPTIONS] <mps_file> <output_directory>
+./build/cupdlpx [OPTIONS] <mps_file> <output_directory>
 ```
 
 ### Arguments
