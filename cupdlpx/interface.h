@@ -48,3 +48,5 @@ void lp_solution_free(lp_solution_t* sol);
 #ifdef __cplusplus
 } // extern "C"
 #endif
+// Temporary placeholder for interface API
+// Functions will be declared here later
