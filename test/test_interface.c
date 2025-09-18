@@ -40,7 +40,8 @@ static void run_once(const char* tag,
                      const double* c, const double* l, const double* u)
 {
     printf("\n=== %s ===\n", tag);
-
+    
+    // build problem
     lp_problem_t* prob = make_problem_from_matrix(
         A_desc,  // A
         c,       // c
@@ -55,23 +56,23 @@ static void run_once(const char* tag,
         return;
     }
 
-    lp_solution_t sol = solve_lp_problem(prob, NULL);
+    // solve
+    cupdlpx_result_t* res = solve_lp_problem(prob, NULL);
     lp_problem_free(prob);
-
-    if (!sol.x || !sol.y) {
-        fprintf(stderr, "[test] solve_lp_problem failed (x/y null). reason=%s\n",
-                term_to_str(sol.reason));
-        lp_solution_free(&sol);
+    if (!res) {
+        fprintf(stderr, "[test] solve_lp_problem failed for %s.\n", tag);
         return;
     }
 
-    printf("Termination: %s\n", term_to_str(sol.reason));
-    printf("Primal obj: %.10g\n", sol.primal_obj);
-    printf("Dual   obj: %.10g\n", sol.dual_obj);
-    print_vec("x", sol.x, sol.n);
-    print_vec("y", sol.y, sol.m);
-
-    lp_solution_free(&sol);
+    // print results
+    printf("Termination: %s\n", term_to_str(res->termination_reason));
+    printf("Primal obj: %.10g\n", res->primal_objective_value);
+    printf("Dual   obj: %.10g\n", res->dual_objective_value);
+    print_vec("x", res->primal_solution, res->num_variables);
+    print_vec("y", res->dual_solution, res->num_constraints);
+    
+    // free
+    cupdlpx_result_free(res);
 }
 
 int main() {
