@@ -42,10 +42,12 @@ static void dense_to_csr(const matrix_desc_t* desc,
         if (fabs(desc->data.dense.A[i]) > tol) ++nnz;
     }
 
+    // allocate
     *row_ptr = (int*)safe_malloc((size_t)(m + 1) * sizeof(int));
     *col_ind = (int*)safe_malloc((size_t)nnz * sizeof(int));
     *vals    = (double*)safe_malloc((size_t)nnz * sizeof(double));
 
+    // fill
     int nz = 0;
     for (int i = 0; i < m; ++i) {
         (*row_ptr)[i] = nz;
@@ -60,6 +62,134 @@ static void dense_to_csr(const matrix_desc_t* desc,
     }
     (*row_ptr)[m] = nz;
     *nnz_out = nz;
+}
+
+// convert CSC → CSR
+static int csc_to_csr(const matrix_desc_t* desc,
+                      int** row_ptr, int** col_ind, double** vals, int* nnz_out) {
+    const int m = desc->m, n = desc->n;
+    const int nnz = desc->data.csc.nnz;
+    const int *col_ptr = desc->data.csc.col_ptr;
+    const int *row_ind = desc->data.csc.row_ind; 
+    const double *v    = desc->data.csc.vals;
+
+    const double tol = (desc->zero_tolerance > 0) ? desc->zero_tolerance : 0.0;
+
+    // count entries per row
+    *row_ptr = (int*)safe_malloc((size_t)(m + 1) * sizeof(int));
+    for (int i = 0; i <= m; ++i) (*row_ptr)[i] = 0;
+
+    // count nnz
+    int eff_nnz = 0;
+    for (int j = 0; j < n; ++j) {
+        for (int k = col_ptr[j]; k < col_ptr[j + 1]; ++k) {
+            int ri = row_ind[k];
+            if (ri < 0 || ri >= m) { fprintf(stderr, "[interface] CSC: row index out of range\n"); return -1; }
+            double val = v[k];
+            if (tol > 0 && fabs(val) <= tol) continue;
+            ++((*row_ptr)[ri + 1]);
+            ++eff_nnz;
+        }
+    }
+
+    // exclusive scan
+    for (int i = 0; i < m; ++i) (*row_ptr)[i + 1] += (*row_ptr)[i];
+
+    // allocate
+    *col_ind = (int*)safe_malloc((size_t)eff_nnz * sizeof(int));
+    *vals    = (double*)safe_malloc((size_t)eff_nnz * sizeof(double));
+
+    // next position to fill in each row
+    int *next = (int*)safe_malloc((size_t)m * sizeof(int));
+    for (int i = 0; i < m; ++i) next[i] = (*row_ptr)[i];
+
+    // fill column indices and values
+    for (int j = 0; j < n; ++j) {
+        for (int k = col_ptr[j]; k < col_ptr[j + 1]; ++k) {
+            int ri = row_ind[k];
+            double val = v[k];
+            if (tol > 0 && fabs(val) <= tol) continue;
+            int pos = next[ri]++;
+            (*col_ind)[pos] = j;
+            (*vals)[pos]    = val;
+        }
+    }
+
+    free(next);
+    *nnz_out = eff_nnz;
+    return 0;
+}
+
+// convert COO → CSR
+static int coo_to_csr(const matrix_desc_t* desc,
+                      int** row_ptr, int** col_ind, double** vals, int* nnz_out) {
+    const int m = desc->m, n = desc->n;
+    const int nnz_in = desc->data.coo.nnz;
+    const int *r = desc->data.coo.row_ind;
+    const int *c = desc->data.coo.col_ind;
+    const double *v = desc->data.coo.vals;
+    const double tol = (desc->zero_tolerance > 0) ? desc->zero_tolerance : 0.0;
+
+    // count nnz
+    int nnz = 0;
+    if (tol > 0) {
+        for (int k = 0; k < nnz_in; ++k)
+            if (fabs(v[k]) > tol) ++nnz;
+    } else {
+        nnz = nnz_in;
+    }
+
+    *row_ptr = (int*)safe_malloc((size_t)(m + 1) * sizeof(int));
+    *col_ind = (int*)safe_malloc((size_t)nnz * sizeof(int));
+    *vals    = (double*)safe_malloc((size_t)nnz * sizeof(double));
+
+    // count entries per row
+    for (int i = 0; i <= m; ++i) (*row_ptr)[i] = 0;
+    if (tol > 0) {
+        for (int k = 0; k < nnz_in; ++k)
+            if (fabs(v[k]) > tol) {
+                int ri = r[k];
+                if (ri < 0 || ri >= m) { fprintf(stderr, "[interface] COO: row index out of range\n"); return -1; }
+                ++((*row_ptr)[ri + 1]);
+            }
+    } else {
+        for (int k = 0; k < nnz_in; ++k) {
+            int ri = r[k];
+            if (ri < 0 || ri >= m) { fprintf(stderr, "[interface] COO: row index out of range\n"); return -1; }
+            ++((*row_ptr)[ri + 1]);
+        }
+    }
+
+    // exclusive scan
+    for (int i = 0; i < m; ++i) (*row_ptr)[i + 1] += (*row_ptr)[i];
+
+    // next position to fill in each row
+    int *next = (int*)safe_malloc((size_t)m * sizeof(int));
+    for (int i = 0; i < m; ++i) next[i] = (*row_ptr)[i];
+
+    // fill column indices and values
+    if (tol > 0) {
+        for (int k = 0; k < nnz_in; ++k) {
+            if (fabs(v[k]) <= tol) continue;
+            int ri = r[k], cj = c[k];
+            if (cj < 0 || cj >= n) { fprintf(stderr, "[interface] COO: col index out of range\n"); free(next); return -1; }
+            int pos = next[ri]++;
+            (*col_ind)[pos] = cj;
+            (*vals)[pos]    = v[k];
+        }
+    } else {
+        for (int k = 0; k < nnz_in; ++k) {
+            int ri = r[k], cj = c[k];
+            if (cj < 0 || cj >= n) { fprintf(stderr, "[interface] COO: col index out of range\n"); free(next); return -1; }
+            int pos = next[ri]++;
+            (*col_ind)[pos] = cj;
+            (*vals)[pos]    = v[k];
+        }
+    }
+
+    free(next);
+    *nnz_out = nnz;
+    return 0;
 }
 
 // create an lp_problem_t from a matrix
@@ -77,7 +207,7 @@ lp_problem_t* make_problem_from_matrix(
     prob->num_variables   = A_desc->n;
     prob->num_constraints = A_desc->m;
 
-    // handle matrix by format → convert to CSR if needed
+    // handle matrix by format
     switch (A_desc->fmt) {
         case matrix_dense:
             dense_to_csr(A_desc,
@@ -97,7 +227,34 @@ lp_problem_t* make_problem_from_matrix(
             memcpy(prob->constraint_matrix_values, A_desc->data.csr.vals, (size_t)A_desc->data.csr.nnz * sizeof(double));
             break;
 
-        // TODO: other formats
+        case matrix_csc: {
+            int *row_ptr=NULL, *col_ind=NULL; double *vals=NULL; int nnz=0;
+            if (csc_to_csr(A_desc, &row_ptr, &col_ind, &vals, &nnz) != 0) {
+                fprintf(stderr, "[interface] CSC->CSR failed.\n");
+                free(prob);
+                return NULL;
+            }
+            prob->constraint_matrix_num_nonzeros = nnz;
+            prob->constraint_matrix_row_pointers = row_ptr;
+            prob->constraint_matrix_col_indices  = col_ind;
+            prob->constraint_matrix_values       = vals;
+            break;
+        }
+
+        case matrix_coo: {
+            int *row_ptr=NULL, *col_ind=NULL; double *vals=NULL; int nnz=0;
+            if (coo_to_csr(A_desc, &row_ptr, &col_ind, &vals, &nnz) != 0) {
+                fprintf(stderr, "[interface] COO->CSR failed.\n");
+                free(prob);
+                return NULL;
+            }
+            prob->constraint_matrix_num_nonzeros = nnz;
+            prob->constraint_matrix_row_pointers = row_ptr;
+            prob->constraint_matrix_col_indices  = col_ind;
+            prob->constraint_matrix_values       = vals;
+           break;
+        }
+            
         default:
             fprintf(stderr, "[interface] make_problem_from_matrix: unsupported matrix format %d.\n", A_desc->fmt);
             free(prob);
