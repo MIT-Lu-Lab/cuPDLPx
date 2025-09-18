@@ -1,4 +1,3 @@
-
 # Prerequisites
 *.d
 
@@ -58,3 +57,4 @@ dkms.conf
 # ignored files
 build/*
 test/*
+/.vscode
