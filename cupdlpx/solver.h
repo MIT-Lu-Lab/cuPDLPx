@@ -28,11 +28,11 @@ extern "C"
 {
 #endif
 
-    pdhg_solver_state_t *optimize(
+    cupdlpx_result_t *optimize(
         const pdhg_parameters_t *params,
         const lp_problem_t *original_problem);
 
-    void pdhg_solver_state_free(pdhg_solver_state_t *state);
+    void cupdlpx_result_free(cupdlpx_result_t *results);
 
 #ifdef __cplusplus
 }

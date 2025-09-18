@@ -325,6 +325,7 @@ typedef struct
     size_t constraint_capacity;
 
     char *objective_row_name;
+    char *current_col_name;
     double objective_constant;
     bool is_maximize;
     int error_flag;
@@ -649,18 +650,42 @@ static int finalize_rows(MpsParserState *state)
 
 static int parse_columns_section(MpsParserState *state, char **tokens, int n_tokens)
 {
-    if (n_tokens < 3)
+    if (n_tokens < 2)
         return 0;
-    const char *col_name = tokens[0];
 
-    if (!ensure_column_capacity(state))
-        return -1;
+    if (n_tokens >= 2 && strcmp(tokens[1], "'MARKER'") == 0)
+    {
+        return 0;
+    }
+
+    const char *col_name = NULL;
+    int pair_start_index;
+
+    if (n_tokens % 2 != 0)
+    {
+        free(state->current_col_name);
+        state->current_col_name = strdup(tokens[0]);
+        if (!state->current_col_name) return -1;
+        
+        col_name = state->current_col_name;
+        pair_start_index = 1;
+    }
+    else
+    {
+        if (!state->current_col_name) {
+             fprintf(stderr, "ERROR: Column data found before any column name was defined.\n");
+             return -1;
+        }
+        col_name = state->current_col_name;
+        pair_start_index = 0;
+    }
+
+    if (!ensure_column_capacity(state)) return -1;
 
     int col_idx = namemap_put(&state->col_map, col_name);
-    if (col_idx == -1)
-        return -1;
+    if (col_idx == -1) return -1;
 
-    for (int i = 1; i + 1 < n_tokens; i += 2)
+    for (int i = pair_start_index; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double value = atof(tokens[i + 1]);
@@ -866,6 +891,7 @@ static void free_parser_state(MpsParserState *state)
     free(state->constraint_lower_bounds);
     free(state->constraint_upper_bounds);
     free(state->objective_row_name);
+    free(state->current_col_name);
 }
 
 void lp_problem_free(lp_problem_t *L)
