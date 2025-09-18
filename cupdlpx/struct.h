@@ -150,8 +150,6 @@ typedef struct
 	double *primal_slack;
 	double *dual_slack;
 	double rescaling_time_sec;
-	double gpu_to_cpu_time_sec;
-	double basic_time_sec;
 	double cumulative_time_sec;
 
 	double *primal_residual;
@@ -196,3 +194,31 @@ typedef struct
 	double *ones_primal_d;
 	double *ones_dual_d;
 } pdhg_solver_state_t;
+
+typedef struct
+{
+	int num_variables;
+	int num_constraints;
+
+	double *primal_solution;
+	double *dual_solution;
+	
+	int total_count;
+	double rescaling_time_sec;
+	double cumulative_time_sec;
+
+	double absolute_primal_residual;
+	double relative_primal_residual;
+	double absolute_dual_residual;
+	double relative_dual_residual;
+	double primal_objective_value;
+	double dual_objective_value;
+	double objective_gap;
+	double relative_objective_gap;
+	double max_primal_ray_infeasibility;
+	double max_dual_ray_infeasibility;
+	double primal_ray_linear_objective;
+	double dual_ray_objective;
+	termination_reason_t termination_reason;
+
+} cupdlpx_result_t;
