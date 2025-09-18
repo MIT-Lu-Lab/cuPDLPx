@@ -16,5 +16,35 @@ limitations under the License.
 
 #pragma once
 
-// Temporary placeholder for interface API
-// Functions will be declared here later
+#include "struct.h"
+#include "utils.h"
+#include "io.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// create an lp_problem_t from a matrix descriptor
+lp_problem_t* make_problem_from_matrix(
+    const matrix_desc_t* A_desc,
+    const double* objective_c,
+    const double* objective_constant,
+    const double* var_lb,
+    const double* var_ub,
+    const double* con_lb,
+    const double* con_ub
+);
+
+// solve the LP problem using PDHG
+lp_solution_t solve_lp_problem(
+    const lp_problem_t* prob,
+    const pdhg_parameters_t* params
+);
+
+// free lp solution
+void lp_solution_free(lp_solution_t* sol);
+
+
+#ifdef __cplusplus
+} // extern "C"
+#endif

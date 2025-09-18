@@ -669,3 +669,28 @@ void rescale_info_free(rescale_info_t *info)
 
     free(info);
 }
+
+void set_default_parameters(pdhg_parameters_t *params)
+{
+    params->l_inf_ruiz_iterations = 10;
+    params->has_pock_chambolle_alpha = true;
+    params->pock_chambolle_alpha = 1.0;
+    params->bound_objective_rescaling = true;
+    params->verbose = false;
+    params->termination_evaluation_frequency = 200;
+    params->reflection_coefficient = 1.0;
+
+    params->termination_criteria.eps_optimal_relative = 1e-4;
+    params->termination_criteria.eps_feasible_relative = 1e-4;
+    params->termination_criteria.eps_infeasible = 1e-10;
+    params->termination_criteria.time_sec_limit = 3600.0;
+    params->termination_criteria.iteration_limit = INT32_MAX;
+
+    params->restart_params.artificial_restart_threshold = 0.36;
+    params->restart_params.sufficient_reduction_for_restart = 0.2;
+    params->restart_params.necessary_reduction_for_restart = 0.5;
+    params->restart_params.k_p = 0.99;
+    params->restart_params.k_i = 0.01;
+    params->restart_params.k_d = 0.0;
+    params->restart_params.i_smooth = 0.3;
+}

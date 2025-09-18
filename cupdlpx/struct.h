@@ -196,3 +196,59 @@ typedef struct
 	double *ones_primal_d;
 	double *ones_dual_d;
 } pdhg_solver_state_t;
+
+// matrix formats
+typedef enum {
+    matrix_dense = 0,
+    matrix_csr   = 1,
+    matrix_csc   = 2,
+    matrix_coo   = 3
+} matrix_format_t;
+
+// matrix descriptor
+typedef struct {
+    int m; // num_constraints
+    int n; // num_variables
+    matrix_format_t fmt;
+
+    // treat abs(x) < zero_tolerance as zero
+    double zero_tolerance;
+
+    union {
+        struct { // Dense (row-major)
+            const double* A; // m*n
+        } dense;
+
+        struct { // CSR
+            int nnz;
+            const int*    row_ptr; 
+            const int*    col_ind;
+            const double* vals;
+        } csr;
+
+        struct { // CSC
+            int nnz;
+            const int*    col_ptr;
+            const int*    row_ind;
+            const double* vals;
+        } csc;
+
+        struct { // COO
+            int nnz;
+            const int*    row_ind;
+            const int*    col_ind; 
+            const double* vals; 
+        } coo;
+    } data;
+} matrix_desc_t;
+
+typedef struct {
+    int n;  // number of variables
+    int m;  // number of constraints
+    double* x;  // primal solution
+    double* y;  // dual solution 
+    double primal_obj; // primal objective value
+    double dual_obj; // dual objective value    
+    termination_reason_t reason; // termination reason
+} lp_solution_t;
+

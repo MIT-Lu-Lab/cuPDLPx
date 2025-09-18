@@ -34,6 +34,8 @@ extern "C"
 
     void pdhg_solver_state_free(pdhg_solver_state_t *state);
 
+    void set_default_parameters(pdhg_parameters_t *params);
+
 #ifdef __cplusplus
 }
 #endif
