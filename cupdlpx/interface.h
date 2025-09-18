@@ -36,14 +36,10 @@ lp_problem_t* make_problem_from_matrix(
 );
 
 // solve the LP problem using PDHG
-lp_solution_t solve_lp_problem(
+cupdlpx_result_t solve_lp_problem(
     const lp_problem_t* prob,
     const pdhg_parameters_t* params
 );
-
-// free lp solution
-void lp_solution_free(lp_solution_t* sol);
-
 
 #ifdef __cplusplus
 } // extern "C"

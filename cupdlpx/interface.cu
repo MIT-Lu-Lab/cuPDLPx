@@ -272,12 +272,12 @@ lp_problem_t* make_problem_from_matrix(
     return prob;
 }
 
-lp_solution_t solve_lp_problem(
+cupdlpx_result_t solve_lp_problem(
     const lp_problem_t* prob,
     const pdhg_parameters_t* params
 ) {
     // initialize output
-    lp_solution_t out = {0};
+    cupdlpx_result_t out = {0};
 
     // argument checks
     if (!prob) {
@@ -329,7 +329,7 @@ lp_solution_t solve_lp_problem(
 }
 
 // free lp solution
-void lp_solution_free(lp_solution_t* sol) {
+void lp_solution_free(cupdlpx_result_t* sol) {
     if (!sol) return;
     if (sol->x) free(sol->x);
     if (sol->y) free(sol->y);

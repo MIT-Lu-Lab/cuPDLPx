@@ -267,13 +267,3 @@ typedef struct {
         } coo;
     } data;
 } matrix_desc_t;
-
-typedef struct {
-    int n;  // number of variables
-    int m;  // number of constraints
-    double* x;  // primal solution
-    double* y;  // dual solution 
-    double primal_obj; // primal objective value
-    double dual_obj; // dual objective value    
-    termination_reason_t reason; // termination reason
-} lp_solution_t;

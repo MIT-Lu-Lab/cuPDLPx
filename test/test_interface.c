@@ -55,7 +55,7 @@ static void run_once(const char* tag,
         return;
     }
 
-    lp_solution_t sol = solve_lp_problem(prob, NULL);
+    cupdlpx_result_t sol = solve_lp_problem(prob, NULL);
     lp_problem_free(prob);
 
     if (!sol.x || !sol.y) {
