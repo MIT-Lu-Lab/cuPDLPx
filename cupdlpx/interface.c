@@ -17,7 +17,6 @@ limitations under the License.
 #include "interface.h"
 #include "solver.h"
 #include "utils.h"
-#include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -217,16 +216,6 @@ lp_problem_t* make_problem_from_matrix(
                          &prob->constraint_matrix_num_nonzeros);
             break;
 
-        case matrix_csr:
-            prob->constraint_matrix_num_nonzeros = A_desc->data.csr.nnz;
-            prob->constraint_matrix_row_pointers = (int*)safe_malloc((size_t)(A_desc->m + 1) * sizeof(int));
-            prob->constraint_matrix_col_indices = (int*)safe_malloc((size_t)A_desc->data.csr.nnz * sizeof(int));
-            prob->constraint_matrix_values = (double*)safe_malloc((size_t)A_desc->data.csr.nnz * sizeof(double));
-            memcpy(prob->constraint_matrix_row_pointers, A_desc->data.csr.row_ptr, (size_t)(A_desc->m + 1) * sizeof(int));
-            memcpy(prob->constraint_matrix_col_indices, A_desc->data.csr.col_ind, (size_t)A_desc->data.csr.nnz * sizeof(int));
-            memcpy(prob->constraint_matrix_values, A_desc->data.csr.vals, (size_t)A_desc->data.csr.nnz * sizeof(double));
-            break;
-
         case matrix_csc: {
             int *row_ptr=NULL, *col_ind=NULL; double *vals=NULL; int nnz=0;
             if (csc_to_csr(A_desc, &row_ptr, &col_ind, &vals, &nnz) != 0) {
@@ -254,6 +243,16 @@ lp_problem_t* make_problem_from_matrix(
             prob->constraint_matrix_values       = vals;
            break;
         }
+
+        case matrix_csr:
+            prob->constraint_matrix_num_nonzeros = A_desc->data.csr.nnz;
+            prob->constraint_matrix_row_pointers = (int*)safe_malloc((size_t)(A_desc->m + 1) * sizeof(int));
+            prob->constraint_matrix_col_indices = (int*)safe_malloc((size_t)A_desc->data.csr.nnz * sizeof(int));
+            prob->constraint_matrix_values = (double*)safe_malloc((size_t)A_desc->data.csr.nnz * sizeof(double));
+            memcpy(prob->constraint_matrix_row_pointers, A_desc->data.csr.row_ptr, (size_t)(A_desc->m + 1) * sizeof(int));
+            memcpy(prob->constraint_matrix_col_indices, A_desc->data.csr.col_ind, (size_t)A_desc->data.csr.nnz * sizeof(int));
+            memcpy(prob->constraint_matrix_values, A_desc->data.csr.vals, (size_t)A_desc->data.csr.nnz * sizeof(double));
+            break;
             
         default:
             fprintf(stderr, "[interface] make_problem_from_matrix: unsupported matrix format %d.\n", A_desc->fmt);
@@ -272,17 +271,14 @@ lp_problem_t* make_problem_from_matrix(
     return prob;
 }
 
-cupdlpx_result_t solve_lp_problem(
+cupdlpx_result_t* solve_lp_problem(
     const lp_problem_t* prob,
     const pdhg_parameters_t* params
 ) {
-    // initialize output
-    cupdlpx_result_t out = {0};
-
     // argument checks
     if (!prob) {
         fprintf(stderr, "[interface] solve_lp_problem: invalid arguments.\n");
-        return out;
+        return NULL;
     }
 
     // prepare parameters: use defaults if not provided 
@@ -294,48 +290,11 @@ cupdlpx_result_t solve_lp_problem(
     }
 
     // call optimizer
-    pdhg_solver_state_t* state = optimize(&local_params, prob);
-    if (!state) {
+    cupdlpx_result_t* res = optimize(&local_params, prob);
+    if (!res) {
         fprintf(stderr, "[interface] optimize returned NULL.\n");
-        return out;
+        return NULL;
     }
-
-    // prepare output
-    out.n = prob->num_variables;
-    out.m = prob->num_constraints;
-    out.x = (double*)safe_malloc((size_t)out.n * sizeof(double));
-    out.y = (double*)safe_malloc((size_t)out.m * sizeof(double));
-
-    // copy solution from GPU to CPU
-    cudaError_t e1 = cudaMemcpy(out.x, state->pdhg_primal_solution,
-                                (size_t)out.n * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaError_t e2 = cudaMemcpy(out.y, state->pdhg_dual_solution,
-                                (size_t)out.m * sizeof(double), cudaMemcpyDeviceToHost);
-    if (e1 != cudaSuccess || e2 != cudaSuccess) {
-        fprintf(stderr, "[interface] cudaMemcpy failed: %s / %s\n",
-                cudaGetErrorName(e1), cudaGetErrorName(e2));
-        free(out.x); out.x = NULL;
-        free(out.y); out.y = NULL;
-        pdhg_solver_state_free(state);
-        return out;
-    }
-
-    out.primal_obj = state->primal_objective_value;
-    out.dual_obj = state->dual_objective_value;
-    out.reason = state->termination_reason;
-
-    pdhg_solver_state_free(state);
-    return out;
-}
-
-// free lp solution
-void lp_solution_free(cupdlpx_result_t* sol) {
-    if (!sol) return;
-    if (sol->x) free(sol->x);
-    if (sol->y) free(sol->y);
-    sol->n = 0;
-    sol->m = 0;
-    sol->primal_obj = 0.0;
-    sol->dual_obj   = 0.0;
-    sol->reason = TERMINATION_REASON_UNSPECIFIED;
+    
+    return res;
 }

@@ -36,7 +36,7 @@ lp_problem_t* make_problem_from_matrix(
 );
 
 // solve the LP problem using PDHG
-cupdlpx_result_t solve_lp_problem(
+cupdlpx_result_t* solve_lp_problem(
     const lp_problem_t* prob,
     const pdhg_parameters_t* params
 );
