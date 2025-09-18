@@ -67,9 +67,12 @@ extern "C"
     extern const double HOST_ONE;
     extern const double HOST_ZERO;
 
-    void *safe_malloc(int size);
+    void *safe_malloc(size_t size);
+    
+    void *safe_calloc(size_t num, size_t size);
 
-    void *safe_calloc(int num, int size);
+    void *safe_realloc(void *ptr, size_t new_size);
+
 
     double estimate_maximum_singular_value(
         cusparseHandle_t sparse_handle,

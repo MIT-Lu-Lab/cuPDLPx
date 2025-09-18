@@ -27,7 +27,7 @@ std::normal_distribution<double> dist(0.0, 1.0);
 const double HOST_ONE = 1.0;
 const double HOST_ZERO = 0.0;
 
-void *safe_malloc(int size)
+void *safe_malloc(size_t size)
 {
     void *ptr = malloc(size);
     if (ptr == NULL)
@@ -38,7 +38,7 @@ void *safe_malloc(int size)
     return ptr;
 }
 
-void *safe_calloc(int num, int size)
+void *safe_calloc(size_t num, size_t size)
 {
     void *ptr = calloc(num, size);
     if (ptr == NULL)
@@ -47,6 +47,20 @@ void *safe_calloc(int num, int size)
         exit(EXIT_FAILURE);
     }
     return ptr;
+}
+
+void *safe_realloc(void *ptr, size_t new_size)
+{
+    if (new_size == 0) {
+        free(ptr);
+        return NULL;
+    }
+    void *tmp = realloc(ptr, new_size);
+    if (!tmp) {
+        perror("Fatal error: realloc failed");
+        exit(EXIT_FAILURE);
+    }
+    return tmp;
 }
 
 double estimate_maximum_singular_value(
