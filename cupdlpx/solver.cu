@@ -776,5 +776,4 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->restart_params.k_i = 0.01;
     params->restart_params.k_d = 0.0;
     params->restart_params.i_smooth = 0.3;
-
 }
