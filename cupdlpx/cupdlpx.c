@@ -74,7 +74,7 @@ char *extract_instance_name(const char *filename)
     return instance_name;
 }
 
-void save_solution(const double *data_d, int size, const char *output_dir,
+void save_solution(const double *data, int size, const char *output_dir,
                    const char *instance_name, const char *suffix)
 {
     char *file_path = get_output_path(output_dir, instance_name, suffix);
@@ -91,20 +91,16 @@ void save_solution(const double *data_d, int size, const char *output_dir,
         return;
     }
 
-    double *solution_host = (double *)safe_malloc(size * sizeof(double));
-    CUDA_CHECK(cudaMemcpy(solution_host, data_d, size * sizeof(double), cudaMemcpyDeviceToHost));
-
     for (int i = 0; i < size; ++i)
     {
-        fprintf(outfile, "%.10g\n", solution_host[i]);
+        fprintf(outfile, "%.10g\n", data[i]);
     }
 
     fclose(outfile);
     free(file_path);
-    free(solution_host);
 }
 
-void save_solver_summary(const pdhg_solver_state_t *solver_state, const char *output_dir, const char *instance_name)
+void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir, const char *instance_name)
 {
     char *file_path = get_output_path(output_dir, instance_name, "_summary.txt");
     if (file_path == NULL)
@@ -119,17 +115,17 @@ void save_solver_summary(const pdhg_solver_state_t *solver_state, const char *ou
         free(file_path);
         return;
     }
-    fprintf(outfile, "Termination Reason: %s\n", termination_reason_tToString(solver_state->termination_reason));
-    fprintf(outfile, "Runtime (sec): %e\n", solver_state->cumulative_time_sec);
-    fprintf(outfile, "Iterations Count: %d\n", solver_state->total_count);
-    fprintf(outfile, "Primal Objective Value: %e\n", solver_state->primal_objective_value);
-    fprintf(outfile, "Dual Objective Value: %e\n", solver_state->dual_objective_value);
-    fprintf(outfile, "Absolute Primal Residual: %e\n", solver_state->absolute_primal_residual);
-    fprintf(outfile, "Relative Primal Residual: %e\n", solver_state->relative_primal_residual);
-    fprintf(outfile, "Absolute Dual Residual: %e\n", solver_state->absolute_dual_residual);
-    fprintf(outfile, "Relative Dual Residual: %e\n", solver_state->relative_dual_residual);
-    fprintf(outfile, "Absolute Objective Gap: %e\n", solver_state->objective_gap);
-    fprintf(outfile, "Relative Objective Gap: %e\n", solver_state->relative_objective_gap);
+    fprintf(outfile, "Termination Reason: %s\n", termination_reason_tToString(result->termination_reason));
+    fprintf(outfile, "Runtime (sec): %e\n", result->cumulative_time_sec);
+    fprintf(outfile, "Iterations Count: %d\n", result->total_count);
+    fprintf(outfile, "Primal Objective Value: %e\n", result->primal_objective_value);
+    fprintf(outfile, "Dual Objective Value: %e\n", result->dual_objective_value);
+    fprintf(outfile, "Absolute Primal Residual: %e\n", result->absolute_primal_residual);
+    fprintf(outfile, "Relative Primal Residual: %e\n", result->relative_primal_residual);
+    fprintf(outfile, "Absolute Dual Residual: %e\n", result->absolute_dual_residual);
+    fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
+    fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
+    fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
     fclose(outfile);
     free(file_path);
 }
@@ -251,20 +247,20 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    pdhg_solver_state_t *solver_state = optimize(&params, problem);
+    cupdlpx_result_t *result = optimize(&params, problem);
 
-    if (solver_state == NULL)
+    if (result == NULL)
     {
         fprintf(stderr, "Solver failed.\n");
     }
     else
     {
-        save_solver_summary(solver_state, output_dir, instance_name);
-        save_solution(solver_state->pdhg_primal_solution, problem->num_variables, output_dir,
+        save_solver_summary(result, output_dir, instance_name);
+        save_solution(result->primal_solution, problem->num_variables, output_dir,
                       instance_name, "_primal_solution.txt");
-        save_solution(solver_state->pdhg_dual_solution, problem->num_constraints, output_dir,
+        save_solution(result->dual_solution, problem->num_constraints, output_dir,
                       instance_name, "_dual_solution.txt");
-        pdhg_solver_state_free(solver_state);
+        cupdlpx_result_free(result);
     }
 
     lp_problem_free(problem);
