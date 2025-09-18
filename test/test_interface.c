@@ -35,6 +35,45 @@ static void print_vec(const char* name, const double* v, int n) {
     printf("\n");
 }
 
+static void run_once(const char* tag,
+                     const matrix_desc_t* A_desc,
+                     const double* c, const double* l, const double* u)
+{
+    printf("\n=== %s ===\n", tag);
+
+    lp_problem_t* prob = make_problem_from_matrix(
+        A_desc,  // A
+        c,       // c
+        NULL,    // objective_constant
+        NULL,    // var_lb (defaults to 0)
+        NULL,    // var_ub (defaults to +inf)
+        l,       // con_lb
+        u        // con_ub
+    );
+    if (!prob) {
+        fprintf(stderr, "[test] make_problem_from_matrix failed for %s.\n", tag);
+        return;
+    }
+
+    lp_solution_t sol = solve_lp_problem(prob, NULL);
+    lp_problem_free(prob);
+
+    if (!sol.x || !sol.y) {
+        fprintf(stderr, "[test] solve_lp_problem failed (x/y null). reason=%s\n",
+                term_to_str(sol.reason));
+        lp_solution_free(&sol);
+        return;
+    }
+
+    printf("Termination: %s\n", term_to_str(sol.reason));
+    printf("Primal obj: %.10g\n", sol.primal_obj);
+    printf("Dual   obj: %.10g\n", sol.dual_obj);
+    print_vec("x", sol.x, sol.n);
+    print_vec("y", sol.y, sol.m);
+
+    lp_solution_free(&sol);
+}
+
 int main() {
     // Example: min c^T x
     // s.t. l <= A x <= u, x >= 0
@@ -50,12 +89,57 @@ int main() {
     };
 
     // describe A using matrix_desc_t
-    matrix_desc_t A_desc;
-    A_desc.m = m;
-    A_desc.n = n;
-    A_desc.fmt = matrix_dense;
-    A_desc.zero_tolerance = 0.0;
-    A_desc.data.dense.A = &A[0][0];
+    matrix_desc_t A_dense;
+    A_dense.m = m;
+    A_dense.n = n;
+    A_dense.fmt = matrix_dense;
+    A_dense.zero_tolerance = 0.0;
+    A_dense.data.dense.A = &A[0][0];
+
+    // A as a CSR matrix
+    static int csr_row_ptr[4] = {0, 2, 3, 5};
+    static int csr_col_ind[5] = {0, 1, 1, 0, 1};
+    static double csr_vals[5] = {1, 2, 1, 3, 2};
+
+    // describe A using matrix_desc_t
+    matrix_desc_t A_csr;
+    A_csr.m = m; A_csr.n = n;
+    A_csr.fmt = matrix_csr;
+    A_csr.zero_tolerance = 0.0;
+    A_csr.data.csr.nnz = 5;
+    A_csr.data.csr.row_ptr = csr_row_ptr;
+    A_csr.data.csr.col_ind = csr_col_ind;
+    A_csr.data.csr.vals = csr_vals;
+
+    // A as a CSC matrix
+    static int csc_col_ptr[3] = {0, 2, 5};
+    static int csc_row_ind[5] = {0, 2, 0, 1, 2};
+    static double csc_vals[5] = {1, 3, 2, 1, 2};
+
+    // describe A using matrix_desc_t
+    matrix_desc_t A_csc;
+    A_csc.m = m; A_csc.n = n;
+    A_csc.fmt = matrix_csc;
+    A_csc.zero_tolerance = 0.0;
+    A_csc.data.csc.nnz = 5;
+    A_csc.data.csc.col_ptr = csc_col_ptr;
+    A_csc.data.csc.row_ind = csc_row_ind;
+    A_csc.data.csc.vals = csc_vals;
+
+    // A as a COO matrix
+    static int coo_row_ind[5] = {0, 0, 1, 2, 2};
+    static int coo_col_ind[5] = {0, 1, 1, 0, 1};
+    static double coo_vals[5] = {1, 2, 1, 3, 2};
+
+    // describe A using matrix_desc_t
+    matrix_desc_t A_coo;
+    A_coo.m = m; A_coo.n = n;
+    A_coo.fmt = matrix_coo;
+    A_coo.zero_tolerance = 0.0;
+    A_coo.data.coo.nnz = 5;
+    A_coo.data.coo.row_ind = coo_row_ind;
+    A_coo.data.coo.col_ind = coo_col_ind;
+    A_coo.data.coo.vals = coo_vals;
 
     // c: objective coefficients
     double c[2] = {1.0, 1.0};
@@ -85,7 +169,7 @@ int main() {
     }
 
      lp_problem_t* prob = make_problem_from_matrix(
-        &A_desc,        // A
+        &A_dense,       // A
         c,              // c
         NULL,           // objective_constant
         NULL,           // var_lb
@@ -98,30 +182,10 @@ int main() {
         return 1;
     }
 
-    // solve problem
-    lp_solution_t sol = solve_lp_problem(prob, NULL);
-
-    // free problem
-    lp_problem_free(prob);
-
-    // check solution
-    if (!sol.x || !sol.y) {
-        fprintf(stderr, "[test] solve_lp_problem failed (x/y null). reason=%s\n",
-                term_to_str(sol.reason));
-        lp_solution_free(&sol);
-        return 2;
-    }
-
-    // print solution
-    printf("Solution:\n");
-    printf("Termination: %s\n", term_to_str(sol.reason));
-    printf("Primal obj: %.10g\n", sol.primal_obj);
-    printf("Dual   obj: %.10g\n", sol.dual_obj);
-    print_vec("x", sol.x, sol.n);
-    print_vec("y", sol.y, sol.m);
-
-    // free solution
-    lp_solution_free(&sol);
+    run_once("Test 1: Dense Matrix", &A_dense, c, l, u);
+    run_once("Test 2: CSR Matrix", &A_csr, c, l, u);
+    run_once("Test 3: CSC Matrix", &A_csc, c, l, u);
+    run_once("Test 4: COO Matrix", &A_coo, c, l, u);
 
     return 0;
 }
