@@ -36,8 +36,6 @@ extern "C"
 
     void set_default_parameters(pdhg_parameters_t *params);
 
-    void set_default_parameters(pdhg_parameters_t *params);
-
 #ifdef __cplusplus
 }
 #endif
