@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 // create an lp_problem_t from a matrix descriptor
-lp_problem_t* make_problem_from_matrix(
+lp_problem_t* create_lp_problem(
     const matrix_desc_t* A_desc,
     const double* objective_c,
     const double* objective_constant,
