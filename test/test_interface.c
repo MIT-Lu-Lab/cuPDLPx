@@ -42,7 +42,7 @@ static void run_once(const char* tag,
     printf("\n=== %s ===\n", tag);
     
     // build problem
-    lp_problem_t* prob = make_problem_from_matrix(
+    lp_problem_t* prob = create_lp_problem(
         A_desc,  // A
         c,       // c
         NULL,    // objective_constant
@@ -52,7 +52,7 @@ static void run_once(const char* tag,
         u        // con_ub
     );
     if (!prob) {
-        fprintf(stderr, "[test] make_problem_from_matrix failed for %s.\n", tag);
+        fprintf(stderr, "[test] create_lp_problem failed for %s.\n", tag);
         return;
     }
 
@@ -169,7 +169,7 @@ int main() {
         printf("  row %d: l = %g, u = %g\n", i, l[i], u[i]);
     }
 
-     lp_problem_t* prob = make_problem_from_matrix(
+     lp_problem_t* prob = create_lp_problem(
         &A_dense,       // A
         c,              // c
         NULL,           // objective_constant
@@ -179,7 +179,7 @@ int main() {
         u               // con_ub
     );
     if (!prob) {
-        fprintf(stderr, "[test] make_problem_from_matrix failed.\n");
+        fprintf(stderr, "[test] create_lp_problem failed.\n");
         return 1;
     }
 

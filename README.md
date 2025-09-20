@@ -80,7 +80,7 @@ Besides the command-line interface, cuPDLPx also provides a C API (interface.c) 
 The C API involves two main functions:
 
 ```c
-lp_problem_t* make_problem_from_matrix(
+lp_problem_t* create_lp_problem(
     const matrix_desc_t* A_desc,       // constraint matrix A
     const double* objective_c,         // objective vector c (length n)
     const double* objective_constant,  // scalar objective offset
@@ -96,7 +96,7 @@ cupdlpx_result_t* solve_lp_problem(
 );
 ```
 
-`make_problem_from_matrix` parameters:
+`create_lp_problem` parameters:
 - `A_desc`: Matrix descriptor. Supports `matrix_dense`, `matrix_csr`, `matrix_csc`, `matrix_coo`.
 - `objective_c`: Objective vector. If NULL, defaults to all zeros.
 - `objective_constant`: Scalar constant term added to the objective value. If NULL, defaults to 0.0.
@@ -106,7 +106,7 @@ cupdlpx_result_t* solve_lp_problem(
 - `con_ub`: Constraint upper bounds. If NULL, defaults to all +INFINITY.
 
 `solve_lp_problem` parameters:
-- `prob`: An LP problem built with make_problem_from_matrix.
+- `prob`: An LP problem built with `create_LP_problem`.
 - `params`: Solver parameters. If `NULL`, the solver will use default parameters.
 
 #### Example: Solving a Small LP
@@ -141,7 +141,7 @@ int main() {
     double u[3] = {5.0, 2.0, 8.0};
 
     // Build the problem
-    lp_problem_t* prob = make_problem_from_matrix(
+    lp_problem_t* prob = create_lp_problem(
         &A_desc, c, NULL, NULL, NULL, l, u);
 
     // Solve (NULL → use default parameters)
