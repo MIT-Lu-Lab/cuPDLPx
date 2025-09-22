@@ -22,12 +22,19 @@ def run_once(title, A, c, l, u):
     print("\n" + "=" * 60)
     print(title)
     print("=" * 60)
+    # create model
     model = Model(
         objective_vector=c,
         constraint_matrix=A,
         constraint_lower_bound=l,
         constraint_upper_bound=u,
     )
+    # set some parameters
+    model.setParam("TimeLimit", 30.0)
+    model.setParams(OutputFlag=0, IterationLimit=200000)
+    model.Params.FeasibilityTol = 1e-6
+    model.Params.OptimalityTol = 1e-6
+    # solve
     model.optimize()
     print("Primal x   :", model.X)
     print("Dual y     :", model.Pi)

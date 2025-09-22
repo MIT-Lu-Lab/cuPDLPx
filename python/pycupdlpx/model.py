@@ -18,10 +18,37 @@ from typing import Any, Optional, Union
 import numpy as np
 import scipy.sparse as sp
 
-from ._core import solve_once
+from ._core import solve_once, get_default_params
 
 # array-like type
 ArrayLike = Union[np.ndarray, list, tuple]
+
+# parameter name alias
+_PARAM_ALIAS = {
+    # limits / logging
+    "TimeLimit": "time_sec_limit",
+    "IterationLimit": "iteration_limit",
+    "OutputFlag": "verbose",
+    "LogToConsole": "verbose",
+    # termination evaluation cadence
+    "TermCheckFreq": "termination_evaluation_frequency",
+    # tolerances
+    "OptimalityTol": "eps_optimal_relative",
+    "FeasibilityTol": "eps_feasible_relative",
+    "InfeasibleTol": "eps_infeasible",
+    # scaling / step size
+    "RuizIters": "l_inf_ruiz_iterations",
+    "UsePCAlpha": "has_pock_chambolle_alpha",
+    "PCAlpha": "pock_chambolle_alpha",
+    "BoundObjRescaling": "bound_objective_rescaling",
+    # restarts
+    "RestartArtificialThresh": "artificial_restart_threshold",
+    "RestartSufficientReduction": "sufficient_reduction_for_restart",
+    "RestartNecessaryReduction": "necessary_reduction_for_restart",
+    "RestartKp": "k_p",
+    # reflection
+    "ReflectionCoeff": "reflection_coefficient",
+}
 
 def _as_dense_f64_c(a: ArrayLike) -> np.ndarray:
     """
@@ -45,6 +72,33 @@ def _as_csr_f64_i32(A: sp.spmatrix) -> sp.csr_matrix:
         csr.indices = csr.indices.astype(np.int32, copy=True)
     csr.sort_indices()
     return csr
+
+
+class _ParamsView:
+    """
+    A view of the model parameters that allows getting/setting via attributes or keys.
+    """
+    def __init__(self, model: "Model"):
+        object.__setattr__(self, "_m", model)
+
+    def __getattr__(self, name: str):
+        key = _PARAM_ALIAS.get(name, name)
+        if key in self._m._params:
+            return self._m._params[key]
+        raise AttributeError(f"Unknown parameter '{name}'")
+
+    def __setattr__(self, name: str, value):
+        self._m.setParam(name, value)
+
+    def __getitem__(self, name: str):
+        return getattr(self, name)
+
+    def __setitem__(self, name: str, value):
+        self._m.setParam(name, value)
+
+    def keys(self):
+        return self._m._params.keys()
+
 
 class Model:
     """
@@ -79,6 +133,9 @@ class Model:
         m, n = constraint_matrix.shape
         self.num_vars = int(n)
         self.num_constrs = int(m)
+        # always start from backend defaults PDLP params
+        self._params: dict[str, Any] = dict(get_default_params())
+        self.Params = _ParamsView(self)
         # set coefficients and bounds
         self.setObjectiveVector(objective_vector)
         self.setObjectiveConstant(objective_constant)
@@ -178,6 +235,8 @@ class Model:
         # check if the input is None
         if constr_lb is None:
             self.constr_lb = None
+            # clear cached solution
+            self._clear_solution_cache()
             return
         # convert to numpy array
         constr_lb = _as_dense_f64_c(constr_lb).ravel()
@@ -196,6 +255,8 @@ class Model:
         # check if the input is None
         if constr_ub is None:
             self.constr_ub = None
+            # clear cached solution
+            self._clear_solution_cache()
             return
         # convert to numpy array
         constr_ub = _as_dense_f64_c(constr_ub).ravel()
@@ -214,6 +275,8 @@ class Model:
         # check if the input is None
         if lb is None:
             self.lb = None
+            # clear cached solution
+            self._clear_solution_cache()
             return
         # convert to numpy array
         lb = _as_dense_f64_c(lb).ravel()
@@ -232,6 +295,8 @@ class Model:
         # check if the input is None
         if ub is None:
             self.ub = None
+            # clear cached solution
+            self._clear_solution_cache()
             return
         # convert to numpy array
         ub = _as_dense_f64_c(ub).ravel()
@@ -242,6 +307,27 @@ class Model:
         self.ub = ub
         # clear cached solution
         self._clear_solution_cache()
+
+    def setParam(self, name: str, value: Any) -> None:
+        """
+        Set the value of a solver parameter by name.
+        """
+        key = _PARAM_ALIAS.get(name, name)
+        self._params[key] = value
+
+    def getParam(self, name: str) -> Any:
+        """
+        Get the value of a solver parameter by name.
+        """
+        key = _PARAM_ALIAS.get(name, name)
+        return self._params.get(key)
+
+    def setParams(self, /, **kwargs) -> None:
+        """
+        Set multiple solver parameters by name. 
+        """
+        for k, v in kwargs.items():
+            self.setParam(k, v)
 
     def optimize(self):
         """
@@ -259,6 +345,7 @@ class Model:
             self.constr_lb,
             self.constr_ub,
             zero_tolerance=0.0,
+            params=self._params
         )
         # solutions
         self._x = np.asarray(info.get("X")) if info.get("X") is not None else None

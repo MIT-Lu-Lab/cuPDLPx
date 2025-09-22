@@ -168,6 +168,80 @@ static int status_to_code(termination_reason_t r) {
     }
 }
 
+// get default parameters as Python dict
+static py::dict get_default_params_py() {
+    pdhg_parameters_t p;
+    set_default_parameters(&p);
+    py::dict d;
+    
+    // verbosity
+    d["verbose"] = p.verbose;
+    d["termination_evaluation_frequency"] = p.termination_evaluation_frequency;
+
+    // tolerances
+    d["eps_optimal_relative"]  = p.termination_criteria.eps_optimal_relative;
+    d["eps_feasible_relative"] = p.termination_criteria.eps_feasible_relative;
+    d["eps_infeasible"]        = p.termination_criteria.eps_infeasible;
+
+    // limits
+    d["time_sec_limit"] = p.termination_criteria.time_sec_limit;
+    d["iteration_limit"] = p.termination_criteria.iteration_limit;
+
+    // rescaling
+    d["l_inf_ruiz_iterations"]    = p.l_inf_ruiz_iterations;
+    d["has_pock_chambolle_alpha"] = p.has_pock_chambolle_alpha;
+    d["pock_chambolle_alpha"]     = p.pock_chambolle_alpha;
+    d["bound_objective_rescaling"]= p.bound_objective_rescaling;
+
+    // restart
+    d["artificial_restart_threshold"]     = p.restart_params.artificial_restart_threshold;
+    d["sufficient_reduction_for_restart"] = p.restart_params.sufficient_reduction_for_restart;
+    d["necessary_reduction_for_restart"]  = p.restart_params.necessary_reduction_for_restart;
+    d["k_p"]                               = p.restart_params.k_p;
+
+    // reflection
+    d["reflection_coefficient"] = p.reflection_coefficient;
+
+    return d;
+}
+
+// parse parameters from Python dict
+static void parse_params_from_python(py::object params_obj, pdhg_parameters_t* p) {
+    if (!params_obj || params_obj.is_none()) return;
+    py::dict d = params_obj.cast<py::dict>();
+
+    auto getf = [&](const char* k, double& tgt){ if (d.contains(k)) tgt = py::cast<double>(d[k]); };
+    auto geti = [&](const char* k, int&    tgt){ if (d.contains(k)) tgt = py::cast<int>(d[k]);    };
+    auto getb = [&](const char* k, bool&   tgt){ if (d.contains(k)) tgt = py::cast<bool>(d[k]);   };
+
+    // verbosity
+    getb("verbose", p->verbose);
+    geti("termination_evaluation_frequency", p->termination_evaluation_frequency);
+
+    // tolerances
+    getf("eps_optimal_relative",  p->termination_criteria.eps_optimal_relative);
+    getf("eps_feasible_relative", p->termination_criteria.eps_feasible_relative);
+    getf("eps_infeasible",        p->termination_criteria.eps_infeasible);
+
+    // limits
+    getf("time_sec_limit", p->termination_criteria.time_sec_limit);
+    geti("iteration_limit", p->termination_criteria.iteration_limit);
+
+    // rescaling
+    geti("l_inf_ruiz_iterations",    p->l_inf_ruiz_iterations);
+    getb("has_pock_chambolle_alpha", p->has_pock_chambolle_alpha);
+    getf("pock_chambolle_alpha",     p->pock_chambolle_alpha);
+    getb("bound_objective_rescaling",p->bound_objective_rescaling);
+
+    // restart
+    getf("artificial_restart_threshold",     p->restart_params.artificial_restart_threshold);
+    getf("sufficient_reduction_for_restart", p->restart_params.sufficient_reduction_for_restart);
+    getf("necessary_reduction_for_restart",  p->restart_params.necessary_reduction_for_restart);
+    getf("k_p",                               p->restart_params.k_p);
+
+    // reflection
+    getf("reflection_coefficient", p->reflection_coefficient);
+}
 
 // view of matrix from Python
 static PyMatrixView get_matrix_from_python(py::object A, double zero_tol) {
@@ -260,7 +334,8 @@ static py::dict solve_once(
     py::object variable_upper_bound,      // ub (optional → inf)
     py::object constraint_lower_bound,    // l  (optional → -inf)
     py::object constraint_upper_bound,    // u  (optional → inf)
-    double zero_tolerance = 0.0           // zero filter tolerance
+    double zero_tolerance = 0.0,          // zero filter tolerance
+    py::object params = py::none()        // PDHG parameters (optional → default)
 ) {
     // parse matrix
     PyMatrixView view = get_matrix_from_python(A, zero_tolerance);
@@ -287,11 +362,14 @@ static py::dict solve_once(
 
     // build problem
     lp_problem_t* prob = create_lp_problem(&view.desc, c_ptr, c0_ptr, lb_ptr, ub_ptr, l_ptr, u_ptr);
-    if (!prob) throw std::runtime_error("create_lp_problem failed.");
-    // Initialize default PDHG params
+    if (!prob) {
+        throw std::runtime_error("create_lp_problem failed.");
+    }
+
+    // parse PDHG params
     pdhg_parameters_t local_params;
     set_default_parameters(&local_params);
-
+    parse_params_from_python(params, &local_params);
     // solve (release GIL during compute)
     cupdlpx_result_t* res = nullptr;
     {
@@ -349,6 +427,9 @@ static py::dict solve_once(
 // module
 PYBIND11_MODULE(_pycupdlpx_core, m) {
     m.doc() = "pycupdlpx core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
+    
+    m.def("get_default_params", &get_default_params_py, 
+          "Return default PDHG parameters as a dict");
 
     m.def("solve_once", &solve_once,
           py::arg("A"),
@@ -358,5 +439,7 @@ PYBIND11_MODULE(_pycupdlpx_core, m) {
           py::arg("variable_upper_bound") = py::none(),
           py::arg("constraint_lower_bound") = py::none(),
           py::arg("constraint_upper_bound") = py::none(),
-          py::arg("zero_tolerance") = 0.0);
+          py::arg("zero_tolerance") = 0.0,
+          py::arg("params") = py::none()
+    );
 }
