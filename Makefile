@@ -11,9 +11,13 @@ BUILD_DIR = ./build
 CFLAGS = -I. -I$(CUDA_HOME)/include -O3 -Wall -Wextra -g
 
 # NVCCFLAGS for CUDA compiler (nvcc)
-NVCCFLAGS = -I. -I$(CUDA_HOME)/include -O3 -g -gencode arch=compute_90,code=sm_90 -gencode arch=compute_80,code=sm_80 -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
-
-# LDFLAGS for the linker
+NVCCFLAGS = -I. -I$(CUDA_HOME)/include -O3 -g \
+    -gencode arch=compute_75,code=sm_75 \
+	-gencode arch=compute_80,code=sm_80 \
+    -gencode arch=compute_86,code=sm_86 \
+    -gencode arch=compute_80,code=sm_89 \
+    -gencode arch=compute_90,code=sm_90 \
+    -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
 LDFLAGS = -L$(CONDA_PREFIX)/lib -L$(CUDA_HOME)/lib64 -lcudart -lcusparse -lcublas -lz -lm
 
 # Source discovery (exclude the debug main)
