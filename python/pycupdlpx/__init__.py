@@ -13,5 +13,6 @@
 # limitations under the License.
 
 from .model import Model
+from . import PDLP
 
 __all__ = ["Model"]
