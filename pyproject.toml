@@ -1,22 +1,23 @@
 [build-system]
 requires = ["scikit-build-core>=0.9.0", "pybind11>=2.11.0", "numpy", "scipy"]
-build-backend = "scikit-build-core.build"
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "pycupdlpx"
 version = "0.1.0"
 description = "Python bindings for cuPDLPx (GPU-accelerated first-order LP solver)"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
-authors = [{name = "cuPDLPx authors"}]
+authors = [{ name = "cuPDLPx authors" }]
 dependencies = ["numpy>=1.21", "scipy>=1.8"]
 
 [tool.scikit-build]
-wheel.expand-macos-universal-tags = true
+build-dir = "build/{wheel_tag}"
+cmake.minimum-version = "3.20"
 cmake.build-type = "Release"
-packages = ["pycupdlpx"]
-package-dir = {"" = "python"}
+wheel.packages = ["python/pycupdlpx"]
 
-[tool.scikit-build.cmake]
-minimum-version = "3.20"
+[tool.scikit-build.cmake.define]
+CMAKE_CUDA_ARCHITECTURES = "75;80;86;89;90;90-virtual"
+CMAKE_CUDA_STANDARD = "17"
