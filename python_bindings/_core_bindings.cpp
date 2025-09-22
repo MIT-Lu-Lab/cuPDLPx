@@ -30,13 +30,9 @@ namespace py = pybind11;
 
 // keepalive for numpy arrays
 struct MatrixKeepalive {
-    // owners of numpy arrays
-    py::object dense_owner;
-    // owners of index arrays
-    py::object idx_owner1, idx_owner2;
-    // owners of 1D float vectors (c, lb, ub, l, u)
-    std::vector<py::object> vec_owners;
-    // temporary storage for indices
+    // keep every owner to prolong lifetime
+    std::vector<py::object> owners;
+    // temporary storage for index downcast
     std::vector<int32_t> tmp_rowptr, tmp_colind;
     std::vector<int32_t> tmp_row, tmp_col;
 };
@@ -79,7 +75,7 @@ static const double* get_arr_ptr_f64_or_null(py::object obj, const char* name, M
     // make contiguous double array
     py::array_t<double, py::array::c_style | py::array::forcecast> out(arr);
     // keep alive the array owning the memory
-    keep.dense_owner = out;
+    keep.owners.push_back(out);
     // return pointer
     return out.data();
 }
@@ -102,9 +98,9 @@ static const int32_t* get_index_ptr_i32(py::object obj, const char* name,
     constexpr int64_t I32_MAX = std::numeric_limits<int32_t>::max();
     // contiguous int32 array
     if (dt.equal(py::dtype::of<int32_t>())) {
-        py::array_t<int32_t, py::array::c_style | py::array::forcecast> a(arr);
-        if (!keep.idx_owner1) keep.idx_owner1 = a; else keep.idx_owner2 = a;
-        return a.data();
+        py::array_t<int32_t, py::array::c_style | py::array::forcecast> out(arr);
+        keep.owners.push_back(out);
+        return out.data();
     }
     // int64 -> int32 with range check
     if (dt.equal(py::dtype::of<int64_t>())) {
@@ -159,6 +155,19 @@ static const char* status_to_str(termination_reason_t r) {
     }
 }
 
+// convert termination reason to int code
+static int status_to_code(termination_reason_t r) {
+    switch (r) {
+        case TERMINATION_REASON_OPTIMAL:           return 0;
+        case TERMINATION_REASON_PRIMAL_INFEASIBLE: return 1;
+        case TERMINATION_REASON_DUAL_INFEASIBLE:   return 2;
+        case TERMINATION_REASON_TIME_LIMIT:        return 3;
+        case TERMINATION_REASON_ITERATION_LIMIT:   return 4;
+        case TERMINATION_REASON_UNSPECIFIED:
+        default:                                   return -1;
+    }
+}
+
 
 // view of matrix from Python
 static PyMatrixView get_matrix_from_python(py::object A, double zero_tol) {
@@ -188,7 +197,7 @@ static PyMatrixView get_matrix_from_python(py::object A, double zero_tol) {
         desc.n = static_cast<int>(req.shape[1]);
         desc.fmt = matrix_dense;
         desc.data.dense.A = static_cast<const double*>(req.ptr);
-        out.keep.dense_owner = d; // keep alive
+        out.keep.owners.push_back(d); // keep alive
         return out;
     }
 
@@ -206,7 +215,7 @@ static PyMatrixView get_matrix_from_python(py::object A, double zero_tol) {
         desc.data.csr.row_ptr = get_index_ptr_i32(rp, "csr.indptr",  out.keep, out.keep.tmp_rowptr);
         desc.data.csr.col_ind = get_index_ptr_i32(ci, "csr.indices", out.keep, out.keep.tmp_colind);
         desc.data.csr.vals    = static_cast<const double*>(v64.request().ptr);
-        out.keep.dense_owner = v64; // keep alive
+        out.keep.owners.push_back(v64); // keep alive
         return out;
     }
     // CSC
@@ -220,7 +229,7 @@ static PyMatrixView get_matrix_from_python(py::object A, double zero_tol) {
         desc.data.csc.col_ptr = get_index_ptr_i32(cp, "csc.indptr",  out.keep, out.keep.tmp_rowptr);
         desc.data.csc.row_ind = get_index_ptr_i32(ri, "csc.indices", out.keep, out.keep.tmp_colind);
         desc.data.csc.vals    = static_cast<const double*>(v64.request().ptr);
-        out.keep.dense_owner = v64; // keep alive
+        out.keep.owners.push_back(v64); // keep alive
         return out;
     }
     // COO
@@ -234,7 +243,7 @@ static PyMatrixView get_matrix_from_python(py::object A, double zero_tol) {
         desc.data.coo.row_ind = get_index_ptr_i32(rr, "coo.row", out.keep, out.keep.tmp_row);
         desc.data.coo.col_ind = get_index_ptr_i32(cc, "coo.col", out.keep, out.keep.tmp_col);
         desc.data.coo.vals    = static_cast<const double*>(v64.request().ptr);
-        out.keep.dense_owner = v64; // keep alive
+        out.keep.owners.push_back(v64); // keep alive
         return out;
     }
 
@@ -316,6 +325,7 @@ static py::dict solve_once(
     info["RelativeObjectiveGap"]   = res->relative_objective_gap;
     // stats
     info["Status"]                 = py::str(status_to_str(res->termination_reason));
+    info["StatusCode"]             = status_to_code(res->termination_reason);
     info["Iterations"]             = res->total_count;
     info["RescalingTimeSec"]       = res->rescaling_time_sec;
     info["RuntimeSec"]             = res->cumulative_time_sec;
