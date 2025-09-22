@@ -2,6 +2,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from pycupdlpx.model import Model
+from pycupdlpx import PDLP
 
 # construct a simple LP for testing
 m, n = 3, 2
@@ -29,6 +30,8 @@ def run_once(title, A, c, l, u):
         constraint_lower_bound=l,
         constraint_upper_bound=u,
     )
+    # set model sense
+    model.ModelSense = PDLP.MAXIMIZE
     # set some parameters
     model.setParam("TimeLimit", 30.0)
     model.setParam("TermCheckFreq", 10)

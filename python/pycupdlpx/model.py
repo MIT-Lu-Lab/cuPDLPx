@@ -19,36 +19,10 @@ import numpy as np
 import scipy.sparse as sp
 
 from ._core import solve_once, get_default_params
+from . import PDLP
 
 # array-like type
 ArrayLike = Union[np.ndarray, list, tuple]
-
-# parameter name alias
-_PARAM_ALIAS = {
-    # limits / logging
-    "TimeLimit": "time_sec_limit",
-    "IterationLimit": "iteration_limit",
-    "OutputFlag": "verbose",
-    "LogToConsole": "verbose",
-    # termination evaluation cadence
-    "TermCheckFreq": "termination_evaluation_frequency",
-    # tolerances
-    "OptimalityTol": "eps_optimal_relative",
-    "FeasibilityTol": "eps_feasible_relative",
-    "InfeasibleTol": "eps_infeasible",
-    # scaling / step size
-    "RuizIters": "l_inf_ruiz_iterations",
-    "UsePCAlpha": "has_pock_chambolle_alpha",
-    "PCAlpha": "pock_chambolle_alpha",
-    "BoundObjRescaling": "bound_objective_rescaling",
-    # restarts
-    "RestartArtificialThresh": "artificial_restart_threshold",
-    "RestartSufficientReduction": "sufficient_reduction_for_restart",
-    "RestartNecessaryReduction": "necessary_reduction_for_restart",
-    "RestartKp": "k_p",
-    # reflection
-    "ReflectionCoeff": "reflection_coefficient",
-}
 
 def _as_dense_f64_c(a: ArrayLike) -> np.ndarray:
     """
@@ -82,7 +56,7 @@ class _ParamsView:
         object.__setattr__(self, "_m", model)
 
     def __getattr__(self, name: str):
-        key = _PARAM_ALIAS.get(name, name)
+        key = PDLP._PARAM_ALIAS.get(name, name)
         if key in self._m._params:
             return self._m._params[key]
         raise AttributeError(f"Unknown parameter '{name}'")
@@ -112,7 +86,7 @@ class Model:
         constraint_upper_bound: Optional[ArrayLike],
         variable_lower_bound: Optional[ArrayLike] = None,
         variable_upper_bound: Optional[ArrayLike] = None,
-        objective_constant: float = 0.0
+        objective_constant: float = 0.0,
     ):
         """
         Initialize the Model with the given parameters.
@@ -125,6 +99,7 @@ class Model:
         - constraint_lower_bounds: Lower bounds for the constraints.
         - constraint_upper_bounds: Upper bounds for the constraints.
         - objective_constant: Constant term in the objective function.
+        - model_sense: PDLP.MINIMIZE or PDLP.MAXIMIZE.
         If variable bounds are not provided, they default to -inf and +inf respectively.    
         """
         # problem dimensions
@@ -133,6 +108,8 @@ class Model:
         m, n = constraint_matrix.shape
         self.num_vars = int(n)
         self.num_constrs = int(m)
+        # sense
+        self.ModelSense = PDLP.MINIMIZE
         # always start from backend defaults PDLP params
         self._params: dict[str, Any] = dict(get_default_params())
         self.Params = _ParamsView(self)
@@ -312,14 +289,14 @@ class Model:
         """
         Set the value of a solver parameter by name.
         """
-        key = _PARAM_ALIAS.get(name, name)
+        key = PDLP._PARAM_ALIAS.get(name, name)
         self._params[key] = value
 
     def getParam(self, name: str) -> Any:
         """
         Get the value of a solver parameter by name.
         """
-        key = _PARAM_ALIAS.get(name, name)
+        key = PDLP._PARAM_ALIAS.get(name, name)
         return self._params.get(key)
 
     def setParams(self, /, **kwargs) -> None:
@@ -335,11 +312,19 @@ class Model:
         """
         # clear cached solution
         self._clear_solution_cache()
+        # check model sense
+        if self.ModelSense not in (PDLP.MINIMIZE, PDLP.MAXIMIZE):
+            raise ValueError("model_sense must be PDLP.MINIMIZE or PDLP.MAXIMIZE")
+        # determine sign
+        sign = 1 if self.ModelSense == PDLP.MINIMIZE else -1
+        # effective objective based on sense
+        c_eff  = sign * self.c if self.c is not None else None
+        c0_eff = sign * self.c0 if self.c0 is not None else None
         # call the core solver
         info = solve_once(
             self.A,
-            self.c,
-            self.c0,
+            c_eff,
+            c0_eff,
             self.lb,
             self.ub,
             self.constr_lb,
@@ -351,8 +336,10 @@ class Model:
         self._x = np.asarray(info.get("X")) if info.get("X") is not None else None
         self._y = np.asarray(info.get("Pi")) if info.get("Pi") is not None else None
         # objectives & gaps
-        self._objval = info.get("PrimalObj")
-        self._dualobj = info.get("DualObj")
+        primal_obj_eff = info.get("PrimalObj")
+        dual_obj_eff   = info.get("DualObj")
+        self._objval = sign * primal_obj_eff if primal_obj_eff is not None else None
+        self._dualobj = sign * dual_obj_eff if dual_obj_eff is not None else None
         self._gap = info.get("ObjectiveGap")
         self._rel_gap = info.get("RelativeObjectiveGap")
         # status & counters
@@ -369,8 +356,10 @@ class Model:
         # rays
         self._max_p_ray = info.get("MaxPrimalRayInfeas")
         self._max_d_ray = info.get("MaxDualRayInfeas")
-        self._p_ray_lin_obj = info.get("PrimalRayLinObj")
-        self._d_ray_obj = info.get("DualRayObj")
+        p_ray_lin_eff  = info.get("PrimalRayLinObj")
+        d_ray_obj_eff  = info.get("DualRayObj")
+        self._p_ray_lin_obj = sign * p_ray_lin_eff if p_ray_lin_eff is not None else None
+        self._d_ray_obj = sign * d_ray_obj_eff if d_ray_obj_eff is not None else None
 
     def _clear_solution_cache(self) -> None:
         """
