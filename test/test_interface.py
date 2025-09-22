@@ -31,9 +31,10 @@ def run_once(title, A, c, l, u):
     )
     # set some parameters
     model.setParam("TimeLimit", 30.0)
-    model.setParams(OutputFlag=0, IterationLimit=200000)
-    model.Params.FeasibilityTol = 1e-6
-    model.Params.OptimalityTol = 1e-6
+    model.setParam("TermCheckFreq", 10)
+    model.setParams(OutputFlag=True, IterationLimit=200000)
+    model.Params.FeasibilityTol = 1e-8
+    model.Params.OptimalityTol = 1e-8
     # solve
     model.optimize()
     print("Primal x   :", model.X)
