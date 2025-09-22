@@ -23,6 +23,29 @@ from ._core import solve_once
 # array-like type
 ArrayLike = Union[np.ndarray, list, tuple]
 
+def _as_dense_f64_c(a: ArrayLike) -> np.ndarray:
+    """
+    Convert input to a C-contiguous numpy array of float64.
+    """
+    arr = np.asarray(a, dtype=np.float64)
+    # ensure C-contiguous
+    if not arr.flags.c_contiguous:
+        arr = np.ascontiguousarray(arr, dtype=np.float64)
+    return arr
+
+def _as_csr_f64_i32(A: sp.spmatrix) -> sp.csr_matrix:
+    """
+    Convert input sparse matrix to CSR format with float64 values and int32 indices.
+    """
+    csr = A.tocsr().astype(np.float64, copy=False)
+    # force int32 indices (common C/CUDA req)
+    if csr.indptr.dtype != np.int32:
+        csr.indptr = csr.indptr.astype(np.int32, copy=True)
+    if csr.indices.dtype != np.int32:
+        csr.indices = csr.indices.astype(np.int32, copy=True)
+    csr.sort_indices()
+    return csr
+
 class Model:
     """
     A class representing a linear programming model.
@@ -85,18 +108,19 @@ class Model:
         self._p_ray_lin_obj: Optional[float] = None # primal ray linear objective
         self._d_ray_obj: Optional[float] = None # dual ray objective
 
-    def setObjectiveVector(self, c: np.ndarray) -> None:
+    def setObjectiveVector(self, c: ArrayLike) -> None:
         """
         Overwrite objective vector c.
         """
-        if not isinstance(c, np.ndarray):
-            raise TypeError("setObjectiveVector: c must be a numpy.ndarray")
-        if c.ndim != 1:
-            raise ValueError(f"setObjectiveVector: c must be 1D, got shape {c.shape}")
-        if c.size != self.num_vars:
-            raise ValueError(f"setObjectiveVector: length {c.size} != self.num_vars ({self.num_vars})")
         # store as float64
-        self.c = np.asarray(c, dtype=np.float64)
+        self.c = _as_dense_f64_c(c)
+        # check dimensions
+        if self.c.ndim != 1:
+            raise ValueError(f"setObjectiveVector: c must be 1D, got shape {self.c.shape}")
+        if self.c.size != self.num_vars:
+            raise ValueError(f"setObjectiveVector: length {self.c.size} != self.num_vars ({self.num_vars})")
+        # clear cached solution
+        self._clear_solution_cache()
 
     def setObjectiveConstant(self, c0: float) -> None:
         """
@@ -104,6 +128,8 @@ class Model:
         Minimal check: convert to float.
         """
         self.c0 = float(c0)
+        # clear cached solution
+        self._clear_solution_cache()
 
     def setConstraintMatrix(self, A_like: ArrayLike) -> None:
         """
@@ -114,32 +140,36 @@ class Model:
         if len(A_like.shape) != 2:
             raise ValueError(f"setConstraintMatrix: A must be 2D, got shape {A_like.shape}")
         if A_like.shape[1] != self.num_vars:
-            raise ValueError(f"setConstraintMatrix: A shape {A_like.shape} does not match number of variables ( {self.num_vars})")
+            raise ValueError(f"setConstraintMatrix: A shape {A_like.shape} does not match number of variables ({self.num_vars})")
         # store as float64
         if sp.issparse(A_like):
-            self.A = A_like.astype(np.float64)
+            self.A = _as_csr_f64_i32(A_like)
         else:
-            self.A = np.asarray(A_like, dtype=np.float64)
+            self.A = _as_dense_f64_c(A_like)
         # problem dimensions
         if not hasattr(self.A, "shape") or len(self.A.shape) != 2:
             raise ValueError("constraint_matrix must be a 2D numpy.ndarray or scipy.sparse matrix.")
         m, _ = self.A.shape
         self.num_constrs = int(m)
         # check constraint bounds
-        if self.constr_lb is not None:
-            l = np.asarray(self.constr_lb, dtype=np.float64).ravel()
+        l = getattr(self, "constr_lb", None)
+        if l is not None:
+            l = np.asarray(l, dtype=np.float64).ravel()
             if l.size != self.num_constrs:
                 raise ValueError(
                     f"setConstraintMatrix: constraint_lower_bound length {l.size} != rows {self.num_constrs}. "
                     f"Call setConstraintLowerBound(...) to update it."
                 )
-        if self.constr_ub is not None:
-            u = np.asarray(self.constr_ub, dtype=np.float64).ravel()
+        u = getattr(self, "constr_ub", None)
+        if u is not None:
+            u = np.asarray(u, dtype=np.float64).ravel()
             if u.size != self.num_constrs:
                 raise ValueError(
                     f"setConstraintMatrix: constraint_upper_bound length {u.size} != rows {self.num_constrs}. "
                     f"Call setConstraintUpperBound(...) to update it."
                )
+        # clear cached solution
+        self._clear_solution_cache()
 
     def setConstraintLowerBound(self, constr_lb: Optional[ArrayLike]) -> None:
         """
@@ -150,12 +180,14 @@ class Model:
             self.constr_lb = None
             return
         # convert to numpy array
-        constr_lb = np.asarray(constr_lb, dtype=np.float64).ravel()
+        constr_lb = _as_dense_f64_c(constr_lb).ravel()
         if constr_lb.size != self.num_constrs:
             raise ValueError(
                 f"setConstraintLowerBound: length {constr_lb.size} != self.num_constrs ({self.num_constrs})"
             )
         self.constr_lb = constr_lb
+        # clear cached solution
+        self._clear_solution_cache()
 
     def setConstraintUpperBound(self, constr_ub: Optional[ArrayLike]) -> None:
         """
@@ -166,12 +198,14 @@ class Model:
             self.constr_ub = None
             return
         # convert to numpy array
-        constr_ub = np.asarray(constr_ub, dtype=np.float64).ravel()
+        constr_ub = _as_dense_f64_c(constr_ub).ravel()
         if constr_ub.size != self.num_constrs:
             raise ValueError(
                 f"setConstraintUpperBound: length {constr_ub.size} != self.num_constrs ({self.num_constrs})"
             )
         self.constr_ub = constr_ub
+        # clear cached solution
+        self._clear_solution_cache()
 
     def setVariableLowerBound(self, lb: Optional[ArrayLike]) -> None:
         """
@@ -182,12 +216,14 @@ class Model:
             self.lb = None
             return
         # convert to numpy array
-        lb = np.asarray(lb, dtype=np.float64).ravel()
+        lb = _as_dense_f64_c(lb).ravel()
         if lb.size != self.num_vars:
             raise ValueError(
                 f"setVariableLowerBound: length {lb.size} != self.num_vars ({self.num_vars})"
             )
         self.lb = lb
+        # clear cached solution
+        self._clear_solution_cache()
 
     def setVariableUpperBound(self, ub: Optional[ArrayLike]) -> None:
         """
@@ -198,17 +234,21 @@ class Model:
             self.ub = None
             return
         # convert to numpy array
-        ub = np.asarray(ub, dtype=np.float64).ravel()
+        ub = _as_dense_f64_c(ub).ravel()
         if ub.size != self.num_vars:
             raise ValueError(
                 f"setVariableUpperBound: length {ub.size} != self.num_vars ({self.num_vars})"
             )
         self.ub = ub
+        # clear cached solution
+        self._clear_solution_cache()
 
     def optimize(self):
         """
         Solve the linear programming problem using the cuPDLPx solver.
         """
+        # clear cached solution
+        self._clear_solution_cache()
         # call the core solver
         info = solve_once(
             self.A,
@@ -244,6 +284,22 @@ class Model:
         self._max_d_ray = info.get("MaxDualRayInfeas")
         self._p_ray_lin_obj = info.get("PrimalRayLinObj")
         self._d_ray_obj = info.get("DualRayObj")
+
+    def _clear_solution_cache(self) -> None:
+        """
+        Clear cached solution attributes.
+        """
+        self._x = self._y = None
+        self._objval = self._dualobj = None
+        self._gap = self._rel_gap = None
+        self._status = None
+        self._status_code = None
+        self._iter = None
+        self._runtime = self._rescale_time = None
+        self._abs_p_res = self._rel_p_res = None
+        self._abs_d_res = self._rel_d_res = None
+        self._max_p_ray = self._max_d_ray = None
+        self._p_ray_lin_obj = self._d_ray_obj = None
 
     @property
     def X(self) -> Optional[np.ndarray]:
