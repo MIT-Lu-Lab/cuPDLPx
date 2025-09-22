@@ -7,15 +7,17 @@ project(pycupdlpx LANGUAGES C CXX CUDA)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Optional: be explicit about CUDA standard and separable compilation
-set(CMAKE_CUDA_STANDARD 14)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # Optional: choose CUDA architectures (adjust as needed)
 # e.g., 80=Ampere A100, 86=RTX30, 89=Hopper H100 (SM90=90)
-# set(CMAKE_CUDA_ARCHITECTURES 80;86;89)
+set(CMAKE_CUDA_ARCHITECTURES 75;80;86;89;90;90-virtual)
 
+set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
@@ -24,8 +26,9 @@ find_package(CUDAToolkit REQUIRED)
 # -----------------------------------------------------------------------------
 add_library(cupdlpx_core STATIC
   cupdlpx/interface.c
-  # cupdlpx/solver.cu   # uncomment when you add CUDA sources
-  cupdlpx/utils.c
+  cupdlpx/io.c
+  cupdlpx/solver.cu
+  cupdlpx/utils.cu
 )
 
 # Public headers for dependents (e.g., the pybind11 module)
@@ -39,9 +42,9 @@ set_target_properties(cupdlpx_core PROPERTIES
 )
 
 # If you compile CUDA sources in this target, enable separable compilation
-# (safe to keep ON even if there are no .cu files yet)
 set_target_properties(cupdlpx_core PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON
+  CUDA_RESOLVE_DEVICE_SYMBOLS ON
 )
 
 # Link against CUDA runtime and libraries you use
@@ -51,14 +54,8 @@ target_link_libraries(cupdlpx_core PUBLIC
   CUDA::cusparse
 )
 
-# (Optional) Warnings for C/C++
-if(MSVC)
-  target_compile_options(cupdlpx_core PRIVATE /W4)
-else()
-  target_compile_options(cupdlpx_core PRIVATE -Wall -Wextra -Wpedantic)
-endif()
-
 # -----------------------------------------------------------------------------
 # Add the pybind11 module (lives in subdir)
 # -----------------------------------------------------------------------------
 add_subdirectory(python_bindings)
+
