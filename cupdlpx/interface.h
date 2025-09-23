@@ -19,23 +19,28 @@ limitations under the License.
 #include "struct.h"
 #include "utils.h"
 #include "io.h"
-#include <cuda_runtime.h>
-#include <cusparse.h>
-#include <cublas_v2.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    cupdlpx_result_t *optimize(
-        const pdhg_parameters_t *params,
-        const lp_problem_t *original_problem);
+// create an lp_problem_t from a matrix descriptor
+lp_problem_t* create_lp_problem(
+    const matrix_desc_t* A_desc,
+    const double* objective_c,
+    const double* objective_constant,
+    const double* var_lb,
+    const double* var_ub,
+    const double* con_lb,
+    const double* con_ub
+);
 
-    void cupdlpx_result_free(cupdlpx_result_t *results);
-
-    void set_default_parameters(pdhg_parameters_t *params);
+// solve the LP problem using PDHG
+cupdlpx_result_t* solve_lp_problem(
+    const lp_problem_t* prob,
+    const pdhg_parameters_t* params
+);
 
 #ifdef __cplusplus
-}
+} // extern "C"
 #endif
