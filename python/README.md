@@ -196,8 +196,8 @@ print("Relative gap:", m.RelGap)
 print("Iterations:", m.IterCount, " Runtime (s):", m.Runtime)
 
 # Access solutions
-print("Primal solution x:", m.X)
-print("Dual multipliers pi:", m.Pi)
+print("Primal solution:", m.X)
+print("Dual solution:", m.Pi)
 
 # Check residuals
 print("Primal residual:", m.RelPrimalResidual)
