@@ -44,5 +44,3 @@ cupdlpx_result_t* solve_lp_problem(
 #ifdef __cplusplus
 } // extern "C"
 #endif
-// Temporary placeholder for interface API
-// Functions will be declared here later
