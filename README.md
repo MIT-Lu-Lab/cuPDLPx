@@ -71,7 +71,18 @@ The solver generates three text files in the specified <output_directory>. The f
 - `INSTANCE_primal_solution.txt`: The primal solution vector.
 - `INSTANCE_dual_solution.txt`: The dual solution vector.
 
-### C API Example
+### Python Interface
+
+In addition to the command-line and C APIs, cuPDLPx provides a Python interface (`pycupdlpx`)  
+for building and solving LPs directly with NumPy and SciPy.  
+
+- High-level, Pythonic API similar to commercial solvers.  
+- Supports dense and sparse matrices.  
+- Provides easy parameter management and solution attributes.  
+
+See the [pycupdlpx guide](https://github.com/MIT-Lu-Lab/cuPDLPx/tree/main/python/README.md) for full usage instructions, examples, and API details.
+
+### C Interface
 
 Besides the command-line interface, cuPDLPx also provides a C API (interface.c) for directly solving LPs in memory. This is useful when integrating cuPDLPx into other C/C++ projects or when generating problems programmatically.
 
