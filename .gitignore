@@ -58,3 +58,5 @@ dkms.conf
 build/*
 test/*
 /.vscode
+/.venv
+/_b
