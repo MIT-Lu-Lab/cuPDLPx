@@ -8,17 +8,17 @@ SRC_DIR = ./cupdlpx
 BUILD_DIR = ./build
 
 # CFLAGS for C compiler (gcc)
-CFLAGS = -I. -I$(CUDA_HOME)/include -O3 -Wall -Wextra -g
+CFLAGS = -I. -I$(CUDA_HOME)/include -fPIC -O3 -Wall -Wextra -g
 
 # NVCCFLAGS for CUDA compiler (nvcc)
 NVCCFLAGS = -I. -I$(CUDA_HOME)/include -O3 -g \
             -gencode arch=compute_90,code=sm_90 \
             -gencode arch=compute_80,code=sm_80 \
 			-gencode arch=compute_70,code=sm_70 \
-            -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
+            -Xcompiler -fPIC  -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
 
 # LDFLAGS for the linker
-LDFLAGS = -L$(CUDA_HOME)/lib64 -lcudart -lcusparse -lcublas -lz -lm
+LDFLAGS = -L$(CUDA_HOME)/lib -L$(CUDA_HOME)/lib64 -lcudart -lcusparse -lcublas -lz -lm
 
 # Source discovery (exclude the debug main)
 C_SOURCES = $(filter-out $(SRC_DIR)/cupdlpx.c, $(wildcard $(SRC_DIR)/*.c))
@@ -62,7 +62,7 @@ $(TARGET_STATIC): $(OBJECTS)
 shared: $(OBJECTS)
 	@echo "Building shared library $(TARGET_SHARED)..."
 	@mkdir -p $(BUILD_DIR)
-	$(NVCC) -shared -o $(TARGET_SHARED) $(OBJECTS) $(LDFLAGS)
+	$(NVCC) -shared -o $(TARGET_SHARED) $(OBJECTS) $(LDFLAGS) --cudart=shared
 
 # Build the debug executable (links the library with cupdlpx.c main)
 build: $(DEBUG_EXEC)
