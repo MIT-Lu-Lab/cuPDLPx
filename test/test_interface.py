@@ -1,8 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 
-from cupdlpx.model import Model
-from cupdlpx import PDLP
+from cupdlpx import PDLP, Model
 
 # construct a simple LP for testing
 m, n = 3, 2
