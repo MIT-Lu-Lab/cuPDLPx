@@ -73,14 +73,14 @@ The solver generates three text files in the specified <output_directory>. The f
 
 ### Python Interface
 
-In addition to the command-line and C APIs, cuPDLPx provides a Python interface (`pycupdlpx`)  
+In addition to the command-line and C APIs, cuPDLPx provides a Python interface (`cupdlpx`)  
 for building and solving LPs directly with NumPy and SciPy.  
 
 - High-level, Pythonic API similar to commercial solvers.  
 - Supports dense and sparse matrices.  
 - Provides easy parameter management and solution attributes.  
 
-See the [pycupdlpx guide](https://github.com/MIT-Lu-Lab/cuPDLPx/tree/main/python/README.md) for full usage instructions, examples, and API details.
+See the [cupdlpx guide](https://github.com/MIT-Lu-Lab/cuPDLPx/tree/main/python/README.md) for full usage instructions, examples, and API details.
 
 ### C Interface
 
@@ -167,7 +167,7 @@ int main() {
 
     lp_problem_free(prob);
     cupdlpx_result_free(res);
-    
+
     return 0;
 }
 ```
