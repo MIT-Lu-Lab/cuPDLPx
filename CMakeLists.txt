@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 # Project config
-project(pycupdlpx LANGUAGES C CXX CUDA)
+project(cupdlpx LANGUAGES C CXX CUDA)
 
 # C/C++ standards
 set(CMAKE_C_STANDARD 99)

@@ -425,8 +425,8 @@ static py::dict solve_once(
 }
 
 // module
-PYBIND11_MODULE(_pycupdlpx_core, m) {
-    m.doc() = "pycupdlpx core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
+PYBIND11_MODULE(_cupdlpx_core, m) {
+    m.doc() = "cupdlpx core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
     
     m.def("get_default_params", &get_default_params_py, 
           "Return default PDHG parameters as a dict");

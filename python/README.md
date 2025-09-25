@@ -1,8 +1,8 @@
-# **pycupdlpx: Python Interface for cuPDLPx**
+# **Python Interface for cuPDLPx**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](../LICENSE)  [![GitHub release](https://img.shields.io/github/release/MIT-Lu-Lab/cuPDLPx.svg)](https://github.com/MIT-Lu-Lab/cuPDLPx/releases)  
 
-`pycupdlpx` is the Python interface to **[`cuPDLPx`](../README.md)**, a GPU-accelerated first-order solver for large-scale linear programming (LP).  
+There is the Python interface to **[`cuPDLPx`](../README.md)**, a GPU-accelerated first-order solver for large-scale linear programming (LP).  
 It provides a high-level, Pythonic API for constructing, modifying, and solving LPs using NumPy and SciPy data structures.
 
 ## Installation
@@ -24,7 +24,7 @@ pip install .
 
 ```python
 import numpy as np
-from pycupdlpx import Model, PDLP
+from cupdlpx import Model, PDLP
 
 # Example: minimize c^T x
 # subject to l <= A x <= u,  lb <= x <= ub
@@ -107,7 +107,7 @@ m = Model(objective_vector=c,
 
 ## Model Sense
 
-By default, `pycupdlpx` solves **minimization problems**.  
+By default, `cupdlpx` solves **minimization problems**.  
 
 To switch between minimization and maximization, set the attribute `ModelSense`:
 

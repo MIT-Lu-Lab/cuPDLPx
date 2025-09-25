@@ -15,4 +15,5 @@
 from .model import Model
 from . import PDLP
 
+__version__ = "0.1.1"
 __all__ = ["Model"]
