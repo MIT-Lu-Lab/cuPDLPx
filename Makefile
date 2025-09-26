@@ -20,6 +20,23 @@ NVCCFLAGS = -I. -I$(CUDA_HOME)/include -O3 -g \
     -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
 LDFLAGS = -L$(CONDA_PREFIX)/lib -L$(CUDA_HOME)/lib64 -lcudart -lcusparse -lcublas -lz -lm
 
+# Version header generation
+GEN_DIR := $(BUILD_DIR)/generated
+VERSION := $(shell sed -n 's/^version *= *"\(.*\)"/\1/p' pyproject.toml)
+VERSION_H := $(GEN_DIR)/version.h
+
+$(VERSION_H): $(SRC_DIR)/version.h.in pyproject.toml
+	@mkdir -p $(GEN_DIR)
+	sed 's/@CUPDLPX_VERSION@/$(VERSION)/g' $< > $@
+	@echo "generated $@ (version $(VERSION))"
+
+# Add include path for generated headers
+CFLAGS    += -I$(GEN_DIR)
+NVCCFLAGS += -I$(GEN_DIR)
+
+# Ensure objects that include version.h depend on it
+$(BUILD_DIR)/utils.o: $(VERSION_H)
+
 # Source discovery (exclude the debug main)
 C_SOURCES = $(filter-out $(SRC_DIR)/cupdlpx.c, $(wildcard $(SRC_DIR)/*.c))
 CU_SOURCES = $(wildcard $(SRC_DIR)/*.cu)

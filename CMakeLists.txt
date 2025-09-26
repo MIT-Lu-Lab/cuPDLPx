@@ -22,6 +22,47 @@ find_package(pybind11 CONFIG REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 # -----------------------------------------------------------------------------
+# Version header generation
+# -----------------------------------------------------------------------------
+# Get python for versioning script
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+# Extract version from pyproject.toml
+execute_process(
+  COMMAND ${Python3_EXECUTABLE} -c
+[=[
+import sys
+# Use stdlib tomllib if available, otherwise fall back to tomli (both accept .load on a binary file)
+try:
+    import tomllib as toml  # Python 3.11+
+except ModuleNotFoundError:
+    import tomli as toml
+
+with open("pyproject.toml", "rb") as f:
+    data = toml.load(f)
+
+ver = data["project"]["version"]
+print(ver)
+]=]
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+  OUTPUT_VARIABLE CUPDLPX_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+# Print the version to CMake output
+message(STATUS "cuPDLPx version from pyproject.toml = ${CUPDLPX_VERSION}")
+
+# Generate version.h from version.h.in
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cupdlpx/version.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/version.h
+  @ONLY
+)
+
+# Make the generated files available for inclusion
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+# -----------------------------------------------------------------------------
 # Build the core native library that the Python extension links against
 # -----------------------------------------------------------------------------
 add_library(cupdlpx_core STATIC
@@ -32,8 +73,9 @@ add_library(cupdlpx_core STATIC
 )
 
 # Public headers for dependents (e.g., the pybind11 module)
-target_include_directories(cupdlpx_core PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/cupdlpx
+target_include_directories(cupdlpx_core
+  PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/cupdlpx
+  PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated
 )
 
 # Ensure position-independent code so it can be linked into a Python extension

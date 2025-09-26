@@ -19,9 +19,8 @@ A_coo = sp.coo_matrix(A_dense)
 
 # define a function to run a test
 def run_once(title, A, c, l, u):
-    print("\n" + "=" * 60)
+    print("\n")
     print(title)
-    print("=" * 60)
     # create model
     model = Model(
         objective_vector=c,
