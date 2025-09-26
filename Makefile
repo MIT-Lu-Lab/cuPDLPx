@@ -12,13 +12,33 @@ CFLAGS = -I. -I$(CUDA_HOME)/include -fPIC -O3 -Wall -Wextra -g
 
 # NVCCFLAGS for CUDA compiler (nvcc)
 NVCCFLAGS = -I. -I$(CUDA_HOME)/include -O3 -g \
+            -gencode arch=compute_75,code=sm_75 \
+	          -gencode arch=compute_80,code=sm_80 \
+            -gencode arch=compute_86,code=sm_86 \
+            -gencode arch=compute_80,code=sm_89 \
             -gencode arch=compute_90,code=sm_90 \
-            -gencode arch=compute_80,code=sm_80 \
-			-gencode arch=compute_70,code=sm_70 \
             -Xcompiler -fPIC  -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
 
 # LDFLAGS for the linker
 LDFLAGS = -L$(CUDA_HOME)/lib -L$(CUDA_HOME)/lib64 -lcudart -lcusparse -lcublas -lz -lm
+
+
+# Version header generation
+GEN_DIR := $(BUILD_DIR)/generated
+VERSION := $(shell sed -n 's/^version *= *"\(.*\)"/\1/p' pyproject.toml)
+VERSION_H := $(GEN_DIR)/version.h
+
+$(VERSION_H): $(SRC_DIR)/version.h.in pyproject.toml
+	@mkdir -p $(GEN_DIR)
+	sed 's/@CUPDLPX_VERSION@/$(VERSION)/g' $< > $@
+	@echo "generated $@ (version $(VERSION))"
+
+# Add include path for generated headers
+CFLAGS    += -I$(GEN_DIR)
+NVCCFLAGS += -I$(GEN_DIR)
+
+# Ensure objects that include version.h depend on it
+$(BUILD_DIR)/utils.o: $(VERSION_H)
 
 # Source discovery (exclude the debug main)
 C_SOURCES = $(filter-out $(SRC_DIR)/cupdlpx.c, $(wildcard $(SRC_DIR)/*.c))
