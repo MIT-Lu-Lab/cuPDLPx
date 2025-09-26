@@ -11,7 +11,7 @@ It provides a high-level, Pythonic API for constructing, modifying, and solving 
 - Python ≥ 3.9  
 - NumPy ≥ 1.21  
 - SciPy ≥ 1.8  
-- An NVIDIA GPU with CUDA support (12.x recommended)  
+- An NVIDIA GPU with CUDA support (≥12.4 required)  
 - A C/C++ toolchain with GCC and NVCC  
 
 ### Build from Source
