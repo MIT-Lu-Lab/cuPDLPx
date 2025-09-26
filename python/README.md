@@ -175,9 +175,7 @@ After calling `m.optimize()`, the solver stores results in a set of read-only at
 | `IterCount` | int | Number of iterations performed. |
 | `Runtime` | float | Total wall-clock runtime in seconds. |
 | `RescalingTime` | float | Time spent on preprocessing and rescaling (seconds). |
-| `AbsPrimalResidual` | float | Absolute primal residual. |
 | `RelPrimalResidual` | float | Relative primal residual. |
-| `AbsDualResidual` | float | Absolute dual residual. |
 | `RelDualResidual` | float | Relative dual residual. |
 | `MaxPrimalRayInfeas` | float | Maximum primal ray infeasibility (indicator for infeasibility). |
 | `MaxDualRayInfeas` | float | Maximum dual ray infeasibility. |

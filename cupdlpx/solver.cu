@@ -736,9 +736,7 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state)
     results->total_count = state->total_count;
     results->rescaling_time_sec = state->rescaling_time_sec;
     results->cumulative_time_sec = state->cumulative_time_sec;
-    results->absolute_primal_residual = state->absolute_primal_residual;
     results->relative_primal_residual = state->relative_primal_residual;
-    results->absolute_dual_residual = state->absolute_dual_residual;
     results->relative_dual_residual = state->relative_dual_residual;
     results->primal_objective_value = state->primal_objective_value;
     results->dual_objective_value = state->dual_objective_value;
