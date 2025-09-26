@@ -65,9 +65,6 @@ static void run_once(const char* tag,
     }
 
     // print results
-    printf("Termination: %s\n", term_to_str(res->termination_reason));
-    printf("Primal obj: %.10g\n", res->primal_objective_value);
-    printf("Dual   obj: %.10g\n", res->dual_objective_value);
     print_vec("x", res->primal_solution, res->num_variables);
     print_vec("y", res->dual_solution, res->num_constraints);
     
