@@ -11,7 +11,7 @@ It provides a high-level, Pythonic API for constructing, modifying, and solving 
 - Python ≥ 3.9  
 - NumPy ≥ 1.21  
 - SciPy ≥ 1.8  
-- An NVIDIA GPU with CUDA support (12.x recommended)  
+- An NVIDIA GPU with CUDA support (≥12.4 required)  
 - A C/C++ toolchain with GCC and NVCC  
 
 ### Build from Source
@@ -175,9 +175,7 @@ After calling `m.optimize()`, the solver stores results in a set of read-only at
 | `IterCount` | int | Number of iterations performed. |
 | `Runtime` | float | Total wall-clock runtime in seconds. |
 | `RescalingTime` | float | Time spent on preprocessing and rescaling (seconds). |
-| `AbsPrimalResidual` | float | Absolute primal residual. |
 | `RelPrimalResidual` | float | Relative primal residual. |
-| `AbsDualResidual` | float | Absolute dual residual. |
 | `RelDualResidual` | float | Relative dual residual. |
 | `MaxPrimalRayInfeas` | float | Maximum primal ray infeasibility (indicator for infeasibility). |
 | `MaxDualRayInfeas` | float | Maximum dual ray infeasibility. |

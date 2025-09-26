@@ -120,9 +120,7 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
     fprintf(outfile, "Iterations Count: %d\n", result->total_count);
     fprintf(outfile, "Primal Objective Value: %e\n", result->primal_objective_value);
     fprintf(outfile, "Dual Objective Value: %e\n", result->dual_objective_value);
-    fprintf(outfile, "Absolute Primal Residual: %e\n", result->absolute_primal_residual);
     fprintf(outfile, "Relative Primal Residual: %e\n", result->relative_primal_residual);
-    fprintf(outfile, "Absolute Dual Residual: %e\n", result->absolute_dual_residual);
     fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
     fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
     fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);

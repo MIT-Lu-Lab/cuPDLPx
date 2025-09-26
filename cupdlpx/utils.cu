@@ -322,10 +322,10 @@ void pdhg_final_log(const pdhg_solver_state_t *state, bool verbose, termination_
     printf("  Status        : %s\n", termination_reason_to_string(reason));
     printf("  Iterations    : %d\n", state->total_count - 1);
     printf("  Solve time    : %.3g sec\n", state->cumulative_time_sec);
-    printf("  primal infeas : %.3e\n", state->absolute_primal_residual);
-    printf("  dual infeas   : %.3e\n", state->absolute_dual_residual);
-    printf("  primal obj    : %.10g\n", state->primal_objective_value);
-    printf("  dual obj      : %.10g\n", state->dual_objective_value);
+    printf("  Primal obj    : %.10g\n", state->primal_objective_value);
+    printf("  Dual obj      : %.10g\n", state->dual_objective_value);
+    printf("  Primal infeas : %.3e\n", state->relative_primal_residual);
+    printf("  Dual infeas   : %.3e\n", state->relative_dual_residual);
 }
 
 void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
