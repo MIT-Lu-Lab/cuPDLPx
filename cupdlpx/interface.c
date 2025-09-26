@@ -67,7 +67,6 @@ static void dense_to_csr(const matrix_desc_t* desc,
 static int csc_to_csr(const matrix_desc_t* desc,
                       int** row_ptr, int** col_ind, double** vals, int* nnz_out) {
     const int m = desc->m, n = desc->n;
-    const int nnz = desc->data.csc.nnz;
     const int *col_ptr = desc->data.csc.col_ptr;
     const int *row_ind = desc->data.csc.row_ind; 
     const double *v    = desc->data.csc.vals;

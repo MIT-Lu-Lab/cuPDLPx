@@ -133,9 +133,7 @@ class Model:
         self._iter: Optional[int] = None # number of iterations
         self._runtime: Optional[float] = None # runtime
         self._rescale_time: Optional[float] = None # rescale time
-        self._abs_p_res: Optional[float] = None # absolute primal residual
         self._rel_p_res: Optional[float] = None # relative primal residual
-        self._abs_d_res: Optional[float] = None # absolute dual residual
         self._rel_d_res: Optional[float] = None # relative dual residual
         self._max_p_ray: Optional[float] = None # maximum primal ray
         self._max_d_ray: Optional[float] = None # maximum dual ray
@@ -349,9 +347,7 @@ class Model:
         self._runtime = info.get("RuntimeSec")
         self._rescale_time = info.get("RescalingTimeSec")
         # residuals
-        self._abs_p_res = info.get("AbsolutePrimalResidual")
         self._rel_p_res = info.get("RelativePrimalResidual")
-        self._abs_d_res = info.get("AbsoluteDualResidual")
         self._rel_d_res = info.get("RelativeDualResidual")
         # rays
         self._max_p_ray = info.get("MaxPrimalRayInfeas")
@@ -372,8 +368,8 @@ class Model:
         self._status_code = None
         self._iter = None
         self._runtime = self._rescale_time = None
-        self._abs_p_res = self._rel_p_res = None
-        self._abs_d_res = self._rel_d_res = None
+        self._rel_p_res = None
+        self._rel_d_res = None
         self._max_p_ray = self._max_d_ray = None
         self._p_ray_lin_obj = self._d_ray_obj = None
 
@@ -420,18 +416,10 @@ class Model:
     @property
     def RescalingTime(self) -> Optional[float]:
         return self._rescale_time
-    
-    @property
-    def AbsPrimalResidual(self) -> Optional[float]:
-        return self._abs_p_res
 
     @property
     def RelPrimalResidual(self) -> Optional[float]:
         return self._rel_p_res
-
-    @property
-    def AbsDualResidual(self) -> Optional[float]:
-        return self._abs_d_res
 
     @property
     def RelDualResidual(self) -> Optional[float]:

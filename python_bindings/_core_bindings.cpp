@@ -408,9 +408,7 @@ static py::dict solve_once(
     info["RescalingTimeSec"]       = res->rescaling_time_sec;
     info["RuntimeSec"]             = res->cumulative_time_sec;
     // residuals
-    info["AbsolutePrimalResidual"] = res->absolute_primal_residual;
     info["RelativePrimalResidual"] = res->relative_primal_residual;
-    info["AbsoluteDualResidual"]   = res->absolute_dual_residual;
     info["RelativeDualResidual"]   = res->relative_dual_residual;
     // rays
     info["MaxPrimalRayInfeas"]     = res->max_primal_ray_infeasibility;

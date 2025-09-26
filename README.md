@@ -17,7 +17,7 @@ Our work is presented in two papers:
 Follow these steps to build the solver and verify its installation.
 
 ### Requirements
-- An NVIDIA GPU with CUDA support (CUDA 12.x is recommended).
+- An NVIDIA GPU with CUDA support (≥12.4 required).
 - A C toolchain (gcc) and the NVIDIA CUDA Compiler (nvcc).
 
 ### Build from Source
