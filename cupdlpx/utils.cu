@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "utils.h"
+#include "version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -286,7 +287,7 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
         return;
     }
     printf("---------------------------------------------------------------------------------------\n");
-    printf("                                    cuPDLPx v0.1.0                                     \n");
+    printf("                                    cuPDLPx v%s                                    \n", CUPDLPX_VERSION);
     printf("                        A GPU-Accelerated First-Order LP Solver                        \n");
     printf("               (c) Haihao Lu, Massachusetts Institute of Technology, 2025              \n");
     printf("---------------------------------------------------------------------------------------\n");
