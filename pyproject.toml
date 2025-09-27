@@ -9,12 +9,17 @@ description = "Python bindings for cuPDLPx (GPU-accelerated first-order LP solve
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
-authors = [{ name = "cuPDLPx authors" }]
+authors = [
+  { name = "Haihao Lu" },
+  { name = "Zedong Peng" },
+  { name = "Jinwen Yang" },
+  { name = "Bo Tang" }
+]
 dependencies = ["numpy>=1.21", "scipy>=1.8"]
 
 [tool.scikit-build]
 build-dir = "build/{wheel_tag}"
-cmake.minimum-version = "3.20"
+cmake.version = ">=3.20"
 cmake.build-type = "Release"
 wheel.packages = ["python/cupdlpx"]
 
