@@ -92,13 +92,13 @@ The C API involves two main functions:
 
 ```c
 lp_problem_t* create_lp_problem(
-    const matrix_desc_t* A_desc,       // constraint matrix A
     const double* objective_c,         // objective vector c (length n)
-    const double* objective_constant,  // scalar objective offset
+    const matrix_desc_t* A_desc,       // constraint matrix A
+    const double* con_lb,              // constraint lower bounds (length m)
+    const double* con_ub,              // constraint upper bounds (length m)
     const double* var_lb,              // variable lower bounds (length n)
     const double* var_ub,              // variable upper bounds (length n)
-    const double* con_lb,              // constraint lower bounds (length m)
-    const double* con_ub               // constraint upper bounds (length m)
+    const double* objective_constant   // scalar objective offset
 );
 
 cupdlpx_result_t* solve_lp_problem(
@@ -108,13 +108,14 @@ cupdlpx_result_t* solve_lp_problem(
 ```
 
 `create_lp_problem` parameters:
-- `A_desc`: Matrix descriptor. Supports `matrix_dense`, `matrix_csr`, `matrix_csc`, `matrix_coo`.
 - `objective_c`: Objective vector. If NULL, defaults to all zeros.
-- `objective_constant`: Scalar constant term added to the objective value. If NULL, defaults to 0.0.
-- `var_lb`: Variable lower bounds. If NULL, defaults to all 0.0.
-- `var_ub`: Variable upper bounds. If NULL, defaults to all +INFINITY.
+- `A_desc`: Matrix descriptor. Supports `matrix_dense`, `matrix_csr`, `matrix_csc`, `matrix_coo`.
 - `con_lb`: Constraint lower bounds. If NULL, defaults to all -INFINITY.
 - `con_ub`: Constraint upper bounds. If NULL, defaults to all +INFINITY.
+- `var_lb`: Variable lower bounds. If NULL, defaults to all 0.0.
+- `var_ub`: Variable upper bounds. If NULL, defaults to all +INFINITY.
+- `objective_constant`: Scalar constant term added to the objective value. If NULL, defaults to 0.0.
+
 
 `solve_lp_problem` parameters:
 - `prob`: An LP problem built with `create_LP_problem`.

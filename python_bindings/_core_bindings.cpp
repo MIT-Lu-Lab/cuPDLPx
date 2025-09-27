@@ -361,7 +361,14 @@ static py::dict solve_once(
     }
 
     // build problem
-    lp_problem_t* prob = create_lp_problem(&view.desc, c_ptr, c0_ptr, lb_ptr, ub_ptr, l_ptr, u_ptr);
+    lp_problem_t* prob = create_lp_problem(c_ptr,        // objective vector
+                                           &view.desc,   // constraint matrix
+                                           l_ptr,        // constraint lower bound
+                                           u_ptr,        // constraint upper bound
+                                           lb_ptr,       // variable lower bound
+                                           ub_ptr,       // variable upper bound
+                                           c0_ptr        // objective constant
+                                        );
     if (!prob) {
         throw std::runtime_error("create_lp_problem failed.");
     }
