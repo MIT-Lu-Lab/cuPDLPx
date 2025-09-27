@@ -15,5 +15,12 @@
 from .model import Model
 from . import PDLP
 
-__version__ = "0.1.1"
 __all__ = ["Model"]
+
+# versioning
+from importlib.metadata import version, PackageNotFoundError
+# get version from package metadata (toml file)
+try:
+    __version__ = version("cupdlpx")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
