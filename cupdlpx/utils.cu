@@ -561,8 +561,8 @@ void compute_residual(pdhg_solver_state_t *state)
 
     state->relative_primal_residual = state->absolute_primal_residual / (1.0 + state->constraint_bound_norm);
     state->relative_dual_residual = state->absolute_dual_residual / (1.0 + state->objective_vector_norm);
-    state->relative_objective_gap = fabs(state->primal_objective_value - state->dual_objective_value) /
-                                    (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
+    state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
+    state->relative_objective_gap = state->objective_gap / (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
 }
 
 void compute_infeasibility_information(pdhg_solver_state_t *state)

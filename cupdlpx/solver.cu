@@ -563,7 +563,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     }
     else
     {
-        state->primal_weight = state->objective_vector_norm / state->constraint_bound_norm;
+        state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
     }
     state->best_primal_weight = state->primal_weight;
 }
