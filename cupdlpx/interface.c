@@ -201,6 +201,8 @@ lp_problem_t* create_lp_problem(
     const double* con_ub
 ) {
     lp_problem_t* prob = (lp_problem_t*)safe_malloc(sizeof(lp_problem_t));
+    prob->initial_primal = NULL;
+    prob->initial_dual = NULL;
 
     prob->num_variables   = A_desc->n;
     prob->num_constraints = A_desc->m;
@@ -270,6 +272,27 @@ lp_problem_t* create_lp_problem(
     return prob;
 }
 
+void lp_problem_set_initial_solution(lp_problem_t* prob, const double* primal, const double* dual)
+{
+    if (!prob) return;
+
+    int n = prob->num_variables;
+    int m = prob->num_constraints;
+
+    // Free previous if any
+    if (prob->initial_primal) { free(prob->initial_primal); prob->initial_primal = NULL; }
+    if (prob->initial_dual)   { free(prob->initial_dual);   prob->initial_dual = NULL; }
+
+    if (primal) {
+        prob->initial_primal = (double*)safe_malloc(n * sizeof(double));
+        memcpy(prob->initial_primal, primal, n * sizeof(double));
+    }
+    if (dual) {
+        prob->initial_dual = (double*)safe_malloc(m * sizeof(double));
+        memcpy(prob->initial_dual, dual, m * sizeof(double));
+    }
+}
+
 cupdlpx_result_t* solve_lp_problem(
     const lp_problem_t* prob,
     const pdhg_parameters_t* params
@@ -279,7 +302,7 @@ cupdlpx_result_t* solve_lp_problem(
         fprintf(stderr, "[interface] solve_lp_problem: invalid arguments.\n");
         return NULL;
     }
-
+    
     // prepare parameters: use defaults if not provided 
     pdhg_parameters_t local_params;
     if (params) {

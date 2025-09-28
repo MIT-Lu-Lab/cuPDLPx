@@ -35,6 +35,9 @@ lp_problem_t* create_lp_problem(
     const double* con_ub
 );
 
+// Set up initial primal and dual solution for an lp_problem_t
+void lp_problem_set_initial_solution(lp_problem_t* prob, const double* primal, const double* dual);
+
 // solve the LP problem using PDHG
 cupdlpx_result_t* solve_lp_problem(
     const lp_problem_t* prob,

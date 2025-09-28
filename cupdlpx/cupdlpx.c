@@ -213,6 +213,25 @@ int main(int argc, char *argv[])
 
     lp_problem_t *problem = read_mps_file(filename);
 
+    // int n = problem->num_variables;
+    // int m = problem->num_constraints;
+
+    // problem->initial_primal = malloc(n * sizeof(double));
+    // problem->initial_dual = malloc(m * sizeof(double));
+    // for (int i = 0; i < n; ++i) problem->initial_primal[i] = drand48(); // or 0.0
+    // for (int i = 0; i < m; ++i) problem->initial_dual[i] = drand48();   // or 0.0
+    // // print out first 5 value of initial solutions
+    // printf("Initial primal (first 5): ");
+    // for (int i = 0; i < (n < 5 ? n : 5); ++i) {
+    //     printf("%f ", problem->initial_primal[i]);
+    // }
+    // printf("\n");
+    // printf("Initial dual (first 5): ");
+    // for (int i = 0; i < (m < 5 ? m : 5); ++i) {
+    //     printf("%f ", problem->initial_dual[i]);
+    // }
+    // printf("\n");
+
     if (problem == NULL)
     {
         fprintf(stderr, "Failed to read or parse the file.\n");
@@ -233,6 +252,18 @@ int main(int argc, char *argv[])
                       instance_name, "_primal_solution.txt");
         save_solution(result->dual_solution, problem->num_constraints, output_dir,
                       instance_name, "_dual_solution.txt");
+        
+        // // --- Add these lines for the second solve ---
+        // // Copy result as new initial solution
+        // memcpy(problem->initial_primal, result->primal_solution, n * sizeof(double));
+        // memcpy(problem->initial_dual, result->dual_solution, m * sizeof(double));
+        // printf("Re-solving with previous solution as initial guess...\n");
+        // cupdlpx_result_t *result2 = optimize(&params, problem);
+        // if (result2) {
+        //     printf("Second solve complete. Termination: %s\n", termination_reason_tToString(result2->termination_reason));
+        //     cupdlpx_result_free(result2);
+        // }
+        // // --- End of added lines ---
         cupdlpx_result_free(result);
     }
 
