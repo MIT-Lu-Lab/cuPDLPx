@@ -77,7 +77,9 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     rescale_info_t *rescale_info = rescale_problem(params, original_problem);
     pdhg_solver_state_t *state = initialize_solver_state(original_problem, rescale_info);
 
-    setup_initial_solutions(state, original_problem, rescale_info);
+    if (original_problem->initial_primal != NULL || original_problem->initial_dual != NULL){
+        setup_initial_solutions(state, original_problem, rescale_info);
+    }
 
     rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
@@ -799,8 +801,6 @@ static void setup_initial_solutions(
             rescaled[i] = original_problem->initial_primal[i] * rescale_info->var_rescale[i] * rescale_info->con_bound_rescale;
         CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, rescaled, var_bytes, cudaMemcpyHostToDevice));
         free(rescaled);
-    } else {
-        CUDA_CHECK(cudaMemset(state->initial_primal_solution, 0, var_bytes));
     }
 
     // Dual
@@ -810,7 +810,5 @@ static void setup_initial_solutions(
             rescaled[i] = original_problem->initial_dual[i] * rescale_info->con_rescale[i] * rescale_info->obj_vec_rescale;
         CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, rescaled, con_bytes, cudaMemcpyHostToDevice));
         free(rescaled);
-    } else {
-        CUDA_CHECK(cudaMemset(state->initial_dual_solution, 0, con_bytes));
     }
 }
