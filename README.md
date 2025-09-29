@@ -92,13 +92,13 @@ The C API involves two main functions:
 
 ```c
 lp_problem_t* create_lp_problem(
-    const double* objective_c,         // objective vector c (length n)
-    const matrix_desc_t* A_desc,       // constraint matrix A
+    const double* c,                   // objective vector (length n)
+    const matrix_desc_t* A,            // constraint matrix (m×n)
     const double* con_lb,              // constraint lower bounds (length m)
     const double* con_ub,              // constraint upper bounds (length m)
     const double* var_lb,              // variable lower bounds (length n)
     const double* var_ub,              // variable upper bounds (length n)
-    const double* objective_constant   // scalar objective offset
+    const double* c0                   // scalar objective offset
 );
 
 cupdlpx_result_t* solve_lp_problem(
