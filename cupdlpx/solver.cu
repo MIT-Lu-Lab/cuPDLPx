@@ -125,7 +125,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         state->inner_count++;
         state->total_count++;
     }
-    printf("free happened after here2\n");
+
     pdhg_final_log(state, params->verbose, state->termination_reason);
     cupdlpx_result_t *results = create_result_from_state(state);
     pdhg_solver_state_free(state);
