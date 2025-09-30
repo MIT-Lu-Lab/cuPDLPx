@@ -201,8 +201,8 @@ lp_problem_t* create_lp_problem(
     const double* con_ub
 ) {
     lp_problem_t* prob = (lp_problem_t*)safe_malloc(sizeof(lp_problem_t));
-    prob->initial_primal = NULL;
-    prob->initial_dual = NULL;
+    prob->primal_start = NULL;
+    prob->dual_start = NULL;
 
     prob->num_variables   = A_desc->n;
     prob->num_constraints = A_desc->m;
@@ -272,7 +272,7 @@ lp_problem_t* create_lp_problem(
     return prob;
 }
 
-void lp_problem_set_initial_solution(lp_problem_t* prob, const double* primal, const double* dual)
+void set_start_values(lp_problem_t* prob, const double* primal, const double* dual)
 {
     if (!prob) return;
 
@@ -280,16 +280,16 @@ void lp_problem_set_initial_solution(lp_problem_t* prob, const double* primal, c
     int m = prob->num_constraints;
 
     // Free previous if any
-    if (prob->initial_primal) { free(prob->initial_primal); prob->initial_primal = NULL; }
-    if (prob->initial_dual)   { free(prob->initial_dual);   prob->initial_dual = NULL; }
+    if (prob->primal_start) { free(prob->primal_start); prob->primal_start = NULL; }
+    if (prob->dual_start)   { free(prob->dual_start);   prob->dual_start = NULL; }
 
     if (primal) {
-        prob->initial_primal = (double*)safe_malloc(n * sizeof(double));
-        memcpy(prob->initial_primal, primal, n * sizeof(double));
+        prob->primal_start = (double*)safe_malloc(n * sizeof(double));
+        memcpy(prob->primal_start, primal, n * sizeof(double));
     }
     if (dual) {
-        prob->initial_dual = (double*)safe_malloc(m * sizeof(double));
-        memcpy(prob->initial_dual, dual, m * sizeof(double));
+        prob->dual_start = (double*)safe_malloc(m * sizeof(double));
+        memcpy(prob->dual_start, dual, m * sizeof(double));
     }
 }
 

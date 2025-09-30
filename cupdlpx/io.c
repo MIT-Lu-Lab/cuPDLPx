@@ -528,9 +528,9 @@ lp_problem_t *read_mps_file(const char *filename)
     prob->variable_upper_bound = state.var_upper_bounds;
     prob->constraint_lower_bound = state.constraint_lower_bounds;
     prob->constraint_upper_bound = state.constraint_upper_bounds;
-    
-    prob->initial_primal = NULL;
-    prob->initial_dual = NULL;
+
+    prob->primal_start = NULL;
+    prob->dual_start = NULL;
 
     state.objective_coeffs = NULL;
     state.var_lower_bounds = NULL;
@@ -909,8 +909,8 @@ void lp_problem_free(lp_problem_t *L)
     free(L->objective_vector);
     free(L->constraint_lower_bound);
     free(L->constraint_upper_bound);
-    free(L->initial_primal);
-    free(L->initial_dual);
+    free(L->primal_start);
+    free(L->dual_start);
     memset(L, 0, sizeof(*L));
 }
 
@@ -947,17 +947,17 @@ static lp_problem_t *deepcopy_problem(const lp_problem_t *prob)
     memcpy(new_prob->constraint_matrix_col_indices, prob->constraint_matrix_col_indices, nnz_bytes_col);
     memcpy(new_prob->constraint_matrix_values, prob->constraint_matrix_values, nnz_bytes_val);
 
-    if (prob->initial_primal) {
-        new_prob->initial_primal = safe_malloc(var_bytes);
-        memcpy(new_prob->initial_primal, prob->initial_primal, var_bytes);
+    if (prob->primal_start) {
+        new_prob->primal_start = safe_malloc(var_bytes);
+        memcpy(new_prob->primal_start, prob->primal_start, var_bytes);
     } else {
-        new_prob->initial_primal = NULL;
+        new_prob->primal_start = NULL;
     }
-    if (prob->initial_dual) {
-        new_prob->initial_dual = safe_malloc(con_bytes);
-        memcpy(new_prob->initial_dual, prob->initial_dual, con_bytes);
+    if (prob->dual_start) {
+        new_prob->dual_start = safe_malloc(con_bytes);
+        memcpy(new_prob->dual_start, prob->dual_start, con_bytes);
     } else {
-        new_prob->initial_dual = NULL;
+        new_prob->dual_start = NULL;
     }
 
     return new_prob;

@@ -90,12 +90,12 @@ static void run_with_initial_solution(const char* tag,
     }
 
     // Allocate and set initial solutions (e.g., zeros)
-    double* primal = (double*)malloc(n * sizeof(double));
-    double* dual   = (double*)malloc(m * sizeof(double));
+    double* primal = (double*)safe_malloc(n * sizeof(double));
+    double* dual   = (double*)safe_malloc(m * sizeof(double));
     for (int i = 0; i < n; ++i) primal[i] = 1.0;
     for (int i = 0; i < m; ++i) dual[i] = 1.0;
 
-    lp_problem_set_initial_solution(prob, primal, dual);
+    set_start_values(prob, primal, dual);
 
     free(primal);
     free(dual);
