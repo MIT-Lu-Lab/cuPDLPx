@@ -72,7 +72,7 @@ static void run_once(const char* tag,
     cupdlpx_result_free(res);
 }
 
-static void run_with_initial_solution(const char* tag,
+static void test_warm_start(const char* tag,
                                       const matrix_desc_t* A_desc,
                                       const double* c, const double* l, const double* u)
 {
