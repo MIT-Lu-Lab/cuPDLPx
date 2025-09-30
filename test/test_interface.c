@@ -227,10 +227,10 @@ int main() {
     run_once("Test 3: CSC Matrix", &A_csc, c, l, u);
     run_once("Test 4: COO Matrix", &A_coo, c, l, u);
 
-    run_with_initial_solution("Test 5: Dense Matrix", &A_dense, c, l, u);
-    run_with_initial_solution("Test 6: CSR Matrix", &A_csr, c, l, u);
-    run_with_initial_solution("Test 7: CSC Matrix", &A_csc, c, l, u);
-    run_with_initial_solution("Test 8: COO Matrix", &A_coo, c, l, u);
+    test_warm_start("Test 5: Dense Matrix", &A_dense, c, l, u);
+    test_warm_start("Test 6: CSR Matrix", &A_csr, c, l, u);
+    test_warm_start("Test 7: CSC Matrix", &A_csc, c, l, u);
+    test_warm_start("Test 8: COO Matrix", &A_coo, c, l, u);
 
     return 0;
 }
