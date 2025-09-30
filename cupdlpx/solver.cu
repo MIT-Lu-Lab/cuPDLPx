@@ -225,14 +225,14 @@ static pdhg_solver_state_t *initialize_solver_state(
     ALLOC_ZERO(state->delta_dual_solution, con_bytes);
 
     if (original_problem->primal_start) {
-        double *rescaled = (double *)malloc(var_bytes);
+        double *rescaled = (double *)safe_malloc(var_bytes);
         for (int i = 0; i < n_vars; ++i)
             rescaled[i] = original_problem->primal_start[i] * rescale_info->var_rescale[i] * rescale_info->con_bound_rescale;
         CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, rescaled, var_bytes, cudaMemcpyHostToDevice));
         free(rescaled);
     }
     if (original_problem->dual_start) {
-        double *rescaled = (double *)malloc(con_bytes);
+        double *rescaled = (double *)safe_malloc(con_bytes);
         for (int i = 0; i < n_cons; ++i)
             rescaled[i] = original_problem->dual_start[i] * rescale_info->con_rescale[i] * rescale_info->obj_vec_rescale;
         CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, rescaled, con_bytes, cudaMemcpyHostToDevice));
