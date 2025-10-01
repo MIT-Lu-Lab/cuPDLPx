@@ -2,6 +2,8 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/release/MIT-Lu-Lab/cuPDLPx.svg)](https://github.com/MIT-Lu-Lab/cuPDLPx/releases)
+[![PyPI version](https://badge.fury.io/py/cupdlpx.svg)](https://pypi.org/project/cupdlpx/)
+[![Downloads](https://static.pepy.tech/badge/cupdlpx)](https://pepy.tech/project/cupdlpx)
 [![arXiv](https://img.shields.io/badge/arXiv-2407.16144-B31B1B.svg)](https://arxiv.org/abs/2407.16144)
 [![arXiv](https://img.shields.io/badge/arXiv-2507.14051-B31B1B.svg)](https://arxiv.org/abs/2507.14051)
 
@@ -79,6 +81,20 @@ for building and solving LPs directly with NumPy and SciPy.
 - High-level, Pythonic API similar to commercial solvers.  
 - Supports dense and sparse matrices.  
 - Provides easy parameter management and solution attributes.  
+
+Install from PyPI:
+
+```bash
+pip install cupdlpx
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/MIT-Lu-Lab/cuPDLPx.git
+cd cuPDLPx
+pip install .
+```
 
 See the [cupdlpx guide](https://github.com/MIT-Lu-Lab/cuPDLPx/tree/main/python/README.md) for full usage instructions, examples, and API details.
 
