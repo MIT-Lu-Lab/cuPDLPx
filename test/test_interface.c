@@ -43,13 +43,13 @@ static void run_once(const char* tag,
     
     // build problem
     lp_problem_t* prob = create_lp_problem(
-        A_desc,  // A
-        c,       // c
-        NULL,    // objective_constant
-        NULL,    // var_lb (defaults to 0)
-        NULL,    // var_ub (defaults to +inf)
-        l,       // con_lb
-        u        // con_ub
+        c,       // objective_c
+        A_desc,  // constraint matrix A
+        l,       // constraint lower bound con_lb
+        u,       // constraint upper bound con_ub
+        NULL,    // variable lower bound var_lb (defaults to 0)
+        NULL,    // variable upper bound var_ub (defaults to +inf)
+        NULL     // objective constant c0 (defaults to 0.0)
     );
     if (!prob) {
         fprintf(stderr, "[test] create_lp_problem failed for %s.\n", tag);
@@ -167,13 +167,13 @@ int main() {
     }
 
      lp_problem_t* prob = create_lp_problem(
-        &A_dense,       // A
         c,              // c
-        NULL,           // objective_constant
+        &A_dense,       // A
+        l,              // con_lb
+        u,              // con_ub
         NULL,           // var_lb
         NULL,           // var_ub
-        l,              // con_lb
-        u               // con_ub
+        NULL            // objective_constant
     );
     if (!prob) {
         fprintf(stderr, "[test] create_lp_problem failed.\n");
@@ -181,9 +181,9 @@ int main() {
     }
 
     run_once("Test 1: Dense Matrix", &A_dense, c, l, u);
-    run_once("Test 2: CSR Matrix", &A_csr, c, l, u);
-    run_once("Test 3: CSC Matrix", &A_csc, c, l, u);
-    run_once("Test 4: COO Matrix", &A_coo, c, l, u);
+    run_once("Test 2: CSR Matrix",   &A_csr,   c, l, u);
+    run_once("Test 3: CSC Matrix",   &A_csc,   c, l, u);
+    run_once("Test 4: COO Matrix",   &A_coo,   c, l, u);
 
     return 0;
 }

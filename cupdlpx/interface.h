@@ -26,13 +26,13 @@ extern "C" {
 
 // create an lp_problem_t from a matrix descriptor
 lp_problem_t* create_lp_problem(
-    const matrix_desc_t* A_desc,
     const double* objective_c,
-    const double* objective_constant,
+    const matrix_desc_t* A_desc,
+    const double* con_lb,
+    const double* con_ub,
     const double* var_lb,
     const double* var_ub,
-    const double* con_lb,
-    const double* con_ub
+    const double* objective_constant
 );
 
 // solve the LP problem using PDHG

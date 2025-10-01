@@ -9,15 +9,57 @@ description = "Python bindings for cuPDLPx (GPU-accelerated first-order LP solve
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.8"
-authors = [{ name = "cuPDLPx authors" }]
+authors = [
+  { name = "Haihao Lu" },
+  { name = "Zedong Peng" },
+  { name = "Jinwen Yang" },
+  { name = "Bo Tang" }
+]
 dependencies = ["numpy>=1.21", "scipy>=1.8"]
 
 [tool.scikit-build]
 build-dir = "build/{wheel_tag}"
-cmake.minimum-version = "3.20"
+cmake.version = ">=3.20"
 cmake.build-type = "Release"
 wheel.packages = ["python/cupdlpx"]
+sdist.include = ["tests/**", "pyproject.toml", "README.md", "LICENSE"]
 
 [tool.scikit-build.cmake.define]
 CMAKE_CUDA_ARCHITECTURES = "75;80;86;89;90;90-virtual"
 CMAKE_CUDA_STANDARD = "17"
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-cov>=4",
+  "numpy",
+  "scipy"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = """
+-q
+-ra
+--strict-markers
+--maxfail=1
+--cov=cupdlpx
+--cov-report=term-missing
+--cov-report=xml
+"""
+markers = [
+  "gpu: requires a CUDA-capable GPU"
+]
+xfail_strict = true
+filterwarnings = [
+  "error::FutureWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["cupdlpx"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true

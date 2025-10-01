@@ -1,6 +1,10 @@
 # **Python Interface for cuPDLPx**
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](../LICENSE)  [![GitHub release](https://img.shields.io/github/release/MIT-Lu-Lab/cuPDLPx.svg)](https://github.com/MIT-Lu-Lab/cuPDLPx/releases)  
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/release/MIT-Lu-Lab/cuPDLPx.svg)](https://github.com/MIT-Lu-Lab/cuPDLPx/releases)
+[![PyPI version](https://badge.fury.io/py/cupdlpx.svg)](https://pypi.org/project/cupdlpx/)
+[![arXiv](https://img.shields.io/badge/arXiv-2407.16144-B31B1B.svg)](https://arxiv.org/abs/2407.16144)
+[![arXiv](https://img.shields.io/badge/arXiv-2507.14051-B31B1B.svg)](https://arxiv.org/abs/2507.14051)
 
 There is the Python interface to **[`cuPDLPx`](../README.md)**, a GPU-accelerated first-order solver for large-scale linear programming (LP).  
 It provides a high-level, Pythonic API for constructing, modifying, and solving LPs using NumPy and SciPy data structures.
@@ -14,9 +18,18 @@ It provides a high-level, Pythonic API for constructing, modifying, and solving 
 - An NVIDIA GPU with CUDA support (≥12.4 required)  
 - A C/C++ toolchain with GCC and NVCC  
 
-### Build from Source
-From the project root:
+### Install
+Install from PyPI:
+
 ```bash
+pip install cupdlpx
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/MIT-Lu-Lab/cuPDLPx.git
+cd cuPDLPx
 pip install .
 ```
 
@@ -118,7 +131,7 @@ m.ModelSense = PDLP.MAXIMIZE
 
 ## Parameters
 
-Solver parameters control termination criteria, logging, scaling, and restart behavior. 
+Solver parameters control termination criteria, logging, scaling, and restart behavior.
 
 Below is a list of commonly used parameters, their internal keys, and descriptions.
 
@@ -201,4 +214,3 @@ print("Dual solution:", m.Pi)
 print("Primal residual:", m.RelPrimalResidual)
 print("Dual residual:", m.RelDualResidual)
 ```
-

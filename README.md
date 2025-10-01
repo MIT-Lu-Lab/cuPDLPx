@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/release/MIT-Lu-Lab/cuPDLPx.svg)](https://github.com/MIT-Lu-Lab/cuPDLPx/releases)
+[![PyPI version](https://badge.fury.io/py/cupdlpx.svg)](https://pypi.org/project/cupdlpx/)
 [![arXiv](https://img.shields.io/badge/arXiv-2407.16144-B31B1B.svg)](https://arxiv.org/abs/2407.16144)
 [![arXiv](https://img.shields.io/badge/arXiv-2507.14051-B31B1B.svg)](https://arxiv.org/abs/2507.14051)
 
@@ -80,6 +81,20 @@ for building and solving LPs directly with NumPy and SciPy.
 - Supports dense and sparse matrices.  
 - Provides easy parameter management and solution attributes.  
 
+Install from PyPI:
+
+```bash
+pip install cupdlpx
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/MIT-Lu-Lab/cuPDLPx.git
+cd cuPDLPx
+pip install .
+```
+
 See the [cupdlpx guide](https://github.com/MIT-Lu-Lab/cuPDLPx/tree/main/python/README.md) for full usage instructions, examples, and API details.
 
 ### C Interface
@@ -92,13 +107,13 @@ The C API involves two main functions:
 
 ```c
 lp_problem_t* create_lp_problem(
-    const matrix_desc_t* A_desc,       // constraint matrix A
-    const double* objective_c,         // objective vector c (length n)
-    const double* objective_constant,  // scalar objective offset
+    const double* c,                   // objective vector (length n)
+    const matrix_desc_t* A,            // constraint matrix (m×n)
+    const double* con_lb,              // constraint lower bounds (length m)
+    const double* con_ub,              // constraint upper bounds (length m)
     const double* var_lb,              // variable lower bounds (length n)
     const double* var_ub,              // variable upper bounds (length n)
-    const double* con_lb,              // constraint lower bounds (length m)
-    const double* con_ub               // constraint upper bounds (length m)
+    const double* c0                   // scalar objective offset
 );
 
 cupdlpx_result_t* solve_lp_problem(
@@ -108,13 +123,14 @@ cupdlpx_result_t* solve_lp_problem(
 ```
 
 `create_lp_problem` parameters:
-- `A_desc`: Matrix descriptor. Supports `matrix_dense`, `matrix_csr`, `matrix_csc`, `matrix_coo`.
 - `objective_c`: Objective vector. If NULL, defaults to all zeros.
-- `objective_constant`: Scalar constant term added to the objective value. If NULL, defaults to 0.0.
-- `var_lb`: Variable lower bounds. If NULL, defaults to all 0.0.
-- `var_ub`: Variable upper bounds. If NULL, defaults to all +INFINITY.
+- `A_desc`: Matrix descriptor. Supports `matrix_dense`, `matrix_csr`, `matrix_csc`, `matrix_coo`.
 - `con_lb`: Constraint lower bounds. If NULL, defaults to all -INFINITY.
 - `con_ub`: Constraint upper bounds. If NULL, defaults to all +INFINITY.
+- `var_lb`: Variable lower bounds. If NULL, defaults to all 0.0.
+- `var_ub`: Variable upper bounds. If NULL, defaults to all +INFINITY.
+- `objective_constant`: Scalar constant term added to the objective value. If NULL, defaults to 0.0.
+
 
 `solve_lp_problem` parameters:
 - `prob`: An LP problem built with `create_LP_problem`.

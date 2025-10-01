@@ -9,6 +9,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# On Windows, map strtok_r to strtok_s for compatibility
+if (WIN32)
+    add_definitions(-Dstrtok_r=strtok_s)
+endif()
+
 # Optional: be explicit about CUDA standard and separable compilation
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
