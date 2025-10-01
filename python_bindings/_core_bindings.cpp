@@ -335,7 +335,9 @@ static py::dict solve_once(
     py::object constraint_lower_bound,    // l  (optional → -inf)
     py::object constraint_upper_bound,    // u  (optional → inf)
     double zero_tolerance = 0.0,          // zero filter tolerance
-    py::object params = py::none()        // PDHG parameters (optional → default)
+    py::object params = py::none(),       // PDHG parameters (optional → default)
+    py::object primal_start = py::none(), // warm start primal solution (optional)
+    py::object dual_start = py::none()    // warm start dual solution (optional)
 ) {
     // parse matrix
     PyMatrixView view = get_matrix_from_python(A, zero_tolerance);
@@ -364,6 +366,17 @@ static py::dict solve_once(
     lp_problem_t* prob = create_lp_problem(&view.desc, c_ptr, c0_ptr, lb_ptr, ub_ptr, l_ptr, u_ptr);
     if (!prob) {
         throw std::runtime_error("create_lp_problem failed.");
+    }
+
+    // set warm start values if provided
+    if ((primal_start && !primal_start.is_none()) || (dual_start && !dual_start.is_none())) {
+        // validate dimensions and get pointers
+        ensure_len_or_null(primal_start, "primal_start", n);
+        ensure_len_or_null(dual_start, "dual_start", m);
+        const double* primal_ptr = get_arr_ptr_f64_or_null(primal_start, "primal_start", view.keep);
+        const double* dual_ptr   = get_arr_ptr_f64_or_null(dual_start,   "dual_start",   view.keep);
+        
+        set_start_values(prob, primal_ptr, dual_ptr);
     }
 
     // parse PDHG params
@@ -438,6 +451,8 @@ PYBIND11_MODULE(_cupdlpx_core, m) {
           py::arg("constraint_lower_bound") = py::none(),
           py::arg("constraint_upper_bound") = py::none(),
           py::arg("zero_tolerance") = 0.0,
-          py::arg("params") = py::none()
+          py::arg("params") = py::none(),
+          py::arg("primal_start") = py::none(),
+          py::arg("dual_start") = py::none()
     );
 }

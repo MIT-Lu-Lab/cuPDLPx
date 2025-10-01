@@ -121,6 +121,9 @@ class Model:
         self.setConstraintUpperBound(constraint_upper_bound)
         self.setVariableLowerBound(variable_lower_bound)
         self.setVariableUpperBound(variable_upper_bound)
+        # initialize warm start values
+        self._primal_start: Optional[np.ndarray] = None # warm start primal solution
+        self._dual_start: Optional[np.ndarray] = None # warm start dual solution
         # initialize solution attributes
         self._x: Optional[np.ndarray] = None # primal solution
         self._y: Optional[np.ndarray] = None # dual solution
@@ -283,6 +286,26 @@ class Model:
         # clear cached solution
         self._clear_solution_cache()
 
+    def setWarmStart(self, primal: Optional[ArrayLike] = None, dual: Optional[ArrayLike] = None) -> None:
+        """
+        Set warm start values for primal and/or dual solutions.
+        """
+        # set primal warm start
+        if primal is not None:
+            primal_arr = _as_dense_f64_c(primal).ravel()
+            if primal_arr.size == self.num_vars:  # otherwise default to None
+                self._primal_start = primal_arr
+            else:
+                print("warning: warm start primal size mismatch, ignoring.")
+            
+        # set dual warm start  
+        if dual is not None:
+            dual_arr = _as_dense_f64_c(dual).ravel()          
+            if dual_arr.size == self.num_constrs:  # otherwise default to None
+                self._dual_start = dual_arr
+            else:
+                print("warning: warm start dual size mismatch, ignoring.")
+
     def setParam(self, name: str, value: Any) -> None:
         """
         Set the value of a solver parameter by name.
@@ -328,7 +351,9 @@ class Model:
             self.constr_lb,
             self.constr_ub,
             zero_tolerance=0.0,
-            params=self._params
+            params=self._params,
+            primal_start=self._primal_start,
+            dual_start=self._dual_start
         )
         # solutions
         self._x = np.asarray(info.get("X")) if info.get("X") is not None else None
