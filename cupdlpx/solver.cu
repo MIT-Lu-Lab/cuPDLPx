@@ -72,12 +72,11 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     print_initial_info(params, original_problem);
     rescale_info_t *rescale_info = rescale_problem(params, original_problem);
     pdhg_solver_state_t *state = initialize_solver_state(original_problem, rescale_info);
-    rescale_info_free(rescale_info);
 
+    rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
     clock_t start_time = clock();
     bool do_restart = false;
-
     while (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
         if ((state->is_this_major_iteration || state->total_count == 0) || (state->total_count % get_print_frequency(state->total_count) == 0))
@@ -224,6 +223,21 @@ static pdhg_solver_state_t *initialize_solver_state(
     ALLOC_ZERO(state->primal_slack, con_bytes);
     ALLOC_ZERO(state->primal_residual, con_bytes);
     ALLOC_ZERO(state->delta_dual_solution, con_bytes);
+
+    if (original_problem->primal_start) {
+        double *rescaled = (double *)safe_malloc(var_bytes);
+        for (int i = 0; i < n_vars; ++i)
+            rescaled[i] = original_problem->primal_start[i] * rescale_info->var_rescale[i] * rescale_info->con_bound_rescale;
+        CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, rescaled, var_bytes, cudaMemcpyHostToDevice));
+        free(rescaled);
+    }
+    if (original_problem->dual_start) {
+        double *rescaled = (double *)safe_malloc(con_bytes);
+        for (int i = 0; i < n_cons; ++i)
+            rescaled[i] = original_problem->dual_start[i] * rescale_info->con_rescale[i] * rescale_info->obj_vec_rescale;
+        CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, rescaled, con_bytes, cudaMemcpyHostToDevice));
+        free(rescaled);
+    }
 
     double *temp_host = (double *)safe_malloc(fmax(var_bytes, con_bytes));
     for (int i = 0; i < n_cons; ++i)

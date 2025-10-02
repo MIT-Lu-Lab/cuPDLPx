@@ -47,6 +47,9 @@ typedef struct
 
 	double *constraint_lower_bound;
 	double *constraint_upper_bound;
+
+	double *primal_start; 
+    double *dual_start;  
 } lp_problem_t;
 
 typedef enum

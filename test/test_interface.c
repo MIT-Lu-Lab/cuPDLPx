@@ -72,6 +72,48 @@ static void run_once(const char* tag,
     cupdlpx_result_free(res);
 }
 
+static void test_warm_start(const char* tag,
+                                      const matrix_desc_t* A_desc,
+                                      const double* c, const double* l, const double* u)
+{
+    printf("\n=== %s (with initial solution) ===\n", tag);
+
+    int n = A_desc->n;
+    int m = A_desc->m;
+
+    lp_problem_t* prob = create_lp_problem(
+        A_desc, c, NULL, NULL, NULL, l, u
+    );
+    if (!prob) {
+        fprintf(stderr, "[test] create_lp_problem failed for %s.\n", tag);
+        return;
+    }
+
+    // Allocate and set initial solutions (e.g., zeros)
+    double* primal = (double*)safe_malloc(n * sizeof(double));
+    double* dual   = (double*)safe_malloc(m * sizeof(double));
+    for (int i = 0; i < n; ++i) primal[i] = 1.0;
+    for (int i = 0; i < m; ++i) dual[i] = 1.0;
+
+    set_start_values(prob, primal, dual);
+
+    free(primal);
+    free(dual);
+
+    cupdlpx_result_t* res = solve_lp_problem(prob, NULL);
+    if (!res) {
+        fprintf(stderr, "[test] solve_lp_problem failed for %s.\n", tag);
+        lp_problem_free(prob);
+        return;
+    }
+
+    print_vec("x", res->primal_solution, res->num_variables);
+    print_vec("y", res->dual_solution, res->num_constraints);
+
+    cupdlpx_result_free(res);
+    lp_problem_free(prob);
+}
+
 int main() {
     // Example: min c^T x
     // s.t. l <= A x <= u, x >= 0
@@ -184,6 +226,11 @@ int main() {
     run_once("Test 2: CSR Matrix",   &A_csr,   c, l, u);
     run_once("Test 3: CSC Matrix",   &A_csc,   c, l, u);
     run_once("Test 4: COO Matrix",   &A_coo,   c, l, u);
+
+    test_warm_start("Test 5: Dense Matrix", &A_dense, c, l, u);
+    test_warm_start("Test 6: CSR Matrix", &A_csr, c, l, u);
+    test_warm_start("Test 7: CSC Matrix", &A_csc, c, l, u);
+    test_warm_start("Test 8: COO Matrix", &A_coo, c, l, u);
 
     return 0;
 }
