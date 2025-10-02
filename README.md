@@ -169,7 +169,7 @@ int main() {
 
     // Build the problem
     lp_problem_t* prob = create_lp_problem(
-        &A_desc, c, NULL, NULL, NULL, l, u);
+        c, &A_desc, l, u, NULL, NULL, NULL);
 
     // Solve (NULL → use default parameters)
     cupdlpx_result_t* res = solve_lp_problem(prob, NULL);
