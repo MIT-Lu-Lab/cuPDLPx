@@ -23,6 +23,7 @@ set(CMAKE_CUDA_ARCHITECTURES "all")
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(CUDAToolkit REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # -----------------------------------------------------------------------------
 # Version header generation
@@ -97,6 +98,7 @@ target_link_libraries(cupdlpx_core PUBLIC
   CUDA::cudart
   CUDA::cublas
   CUDA::cusparse
+  ZLIB::ZLIB
 )
 
 # -----------------------------------------------------------------------------
