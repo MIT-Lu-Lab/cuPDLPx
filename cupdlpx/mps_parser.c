@@ -889,4 +889,3 @@ static void free_parser_state(MpsParserState *state)
     free(state->constraint_upper_bounds);
     free(state->objective_row_name);
     free(state->current_col_name);
-}
