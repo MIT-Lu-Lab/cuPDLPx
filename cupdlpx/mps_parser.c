@@ -14,14 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-<<<<<<<< HEAD:cupdlpx/mps_parser.c
+
 #include "mps_parser.h"
 #include "utils.h"
 #include "solver.h"
-========
-#include "parser.h"
+#include "mps_parser.h"
 #include "utils.h"
->>>>>>>> 13afe8f (Clean code: io -> parser + preconditioner):cupdlpx/parser.c
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
