@@ -28,6 +28,7 @@ typedef struct
 	int num_nonzeros;
 	int *row_ptr;
 	int *col_ind;
+	int *row_ind;
 	double *val;
 } cu_sparse_matrix_csr_t;
 
@@ -64,7 +65,6 @@ typedef enum
 
 typedef struct
 {
-	lp_problem_t *scaled_problem;
 	double *con_rescale;
 	double *var_rescale;
 	double con_bound_rescale;
