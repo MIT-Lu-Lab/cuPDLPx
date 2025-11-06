@@ -60,9 +60,7 @@ static void rescale_solution(pdhg_solver_state_t *state);
 static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state);
 static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
-static pdhg_solver_state_t *initialize_solver_state(
-    const lp_problem_t *original_problem,
-    const rescale_info_t *rescale_info);
+static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *original_problem);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 void lp_problem_free(lp_problem_t *prob);
 void pdhg_solver_state_free(pdhg_solver_state_t *state);
@@ -71,10 +69,8 @@ void rescale_info_free(rescale_info_t *info);
 cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *original_problem)
 {
     print_initial_info(params, original_problem);
-    rescale_info_t *rescale_info = rescale_problem(params, original_problem);
-    pdhg_solver_state_t *state = initialize_solver_state(original_problem, rescale_info);
+    pdhg_solver_state_t *state = initialize_solver_state(original_problem, params);
 
-    rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
     clock_t start_time = clock();
     bool do_restart = false;
@@ -129,12 +125,13 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
 static pdhg_solver_state_t *initialize_solver_state(
     const lp_problem_t *original_problem,
-    const rescale_info_t *rescale_info)
+    const pdhg_parameters_t* params)
 {
     pdhg_solver_state_t *state = (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
 
     int n_vars = original_problem->num_variables;
     int n_cons = original_problem->num_constraints;
+    int nnz = original_problem->constraint_matrix_num_nonzeros;
     size_t var_bytes = n_vars * sizeof(double);
     size_t con_bytes = n_cons * sizeof(double);
 
@@ -155,19 +152,50 @@ static pdhg_solver_state_t *initialize_solver_state(
 
     state->termination_reason = TERMINATION_REASON_UNSPECIFIED;
 
-    state->rescaling_time_sec = rescale_info->rescaling_time_sec;
-
 #define ALLOC_AND_COPY(dest, src, bytes)  \
     CUDA_CHECK(cudaMalloc(&dest, bytes)); \
     CUDA_CHECK(cudaMemcpy(dest, src, bytes, cudaMemcpyHostToDevice));
 
-    ALLOC_AND_COPY(state->constraint_matrix->row_ptr, rescale_info->scaled_problem->constraint_matrix_row_pointers, (n_cons + 1) * sizeof(int));
-    ALLOC_AND_COPY(state->constraint_matrix->col_ind, rescale_info->scaled_problem->constraint_matrix_col_indices, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(int));
-    ALLOC_AND_COPY(state->constraint_matrix->val, rescale_info->scaled_problem->constraint_matrix_values, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(double));
+    ALLOC_AND_COPY(state->constraint_matrix->row_ptr, original_problem->constraint_matrix_row_pointers, (n_cons + 1) * sizeof(int));
+    ALLOC_AND_COPY(state->constraint_matrix->col_ind, original_problem->constraint_matrix_col_indices, original_problem->constraint_matrix_num_nonzeros * sizeof(int));
+    ALLOC_AND_COPY(state->constraint_matrix->val, original_problem->constraint_matrix_values, original_problem->constraint_matrix_num_nonzeros * sizeof(double));
+
+    int* h_row_ind = build_row_ind_from_row_ptr(original_problem->constraint_matrix_row_pointers, n_cons, nnz);
+    ALLOC_AND_COPY(state->constraint_matrix->row_ind, h_row_ind, nnz * sizeof(int));
+    free(h_row_ind);
+
+    ALLOC_AND_COPY(state->variable_lower_bound, original_problem->variable_lower_bound, var_bytes);
+    ALLOC_AND_COPY(state->variable_upper_bound, original_problem->variable_upper_bound, var_bytes);
+    ALLOC_AND_COPY(state->objective_vector, original_problem->objective_vector, var_bytes);
+    ALLOC_AND_COPY(state->constraint_lower_bound, original_problem->constraint_lower_bound, con_bytes);
+    ALLOC_AND_COPY(state->constraint_upper_bound, original_problem->constraint_upper_bound, con_bytes);
+
+    double *temp_host = (double *)safe_malloc(fmax(var_bytes, con_bytes));
+    for (int i = 0; i < n_cons; ++i)
+        temp_host[i] = isfinite(original_problem->constraint_lower_bound[i]) ? original_problem->constraint_lower_bound[i] : 0.0;
+    ALLOC_AND_COPY(state->constraint_lower_bound_finite_val, temp_host, con_bytes);
+    for (int i = 0; i < n_cons; ++i)
+        temp_host[i] = isfinite(original_problem->constraint_upper_bound[i]) ? original_problem->constraint_upper_bound[i] : 0.0;
+    ALLOC_AND_COPY(state->constraint_upper_bound_finite_val, temp_host, con_bytes);
+    for (int i = 0; i < n_vars; ++i)
+        temp_host[i] = isfinite(original_problem->variable_lower_bound[i]) ? original_problem->variable_lower_bound[i] : 0.0;
+    ALLOC_AND_COPY(state->variable_lower_bound_finite_val, temp_host, var_bytes);
+    for (int i = 0; i < n_vars; ++i)
+        temp_host[i] = isfinite(original_problem->variable_upper_bound[i]) ? original_problem->variable_upper_bound[i] : 0.0;
+    ALLOC_AND_COPY(state->variable_upper_bound_finite_val, temp_host, var_bytes);
+    free(temp_host);
+
+    rescale_info_t *rescale_info = rescale_problem(params, state);
+
+    ALLOC_AND_COPY(state->constraint_rescaling, rescale_info->con_rescale, con_bytes);
+    ALLOC_AND_COPY(state->variable_rescaling, rescale_info->var_rescale, var_bytes);
+    state->constraint_bound_rescaling = rescale_info->con_bound_rescale;
+    state->objective_vector_rescaling = rescale_info->obj_vec_rescale;
+    state->rescaling_time_sec = rescale_info->rescaling_time_sec;
 
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ptr, (n_vars + 1) * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->col_ind, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->val, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->col_ind, original_problem->constraint_matrix_num_nonzeros * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->val, original_problem->constraint_matrix_num_nonzeros * sizeof(double)));
 
     CUSPARSE_CHECK(cusparseCreate(&state->sparse_handle));
     CUBLAS_CHECK(cublasCreate(&state->blas_handle));
@@ -189,19 +217,9 @@ static pdhg_solver_state_t *initialize_solver_state(
         state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind,
         CUDA_R_64F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
         CUSPARSE_CSR2CSC_ALG_DEFAULT, buffer));
+    state->constraint_matrix_t->row_ind = NULL;
 
     CUDA_CHECK(cudaFree(buffer));
-
-    ALLOC_AND_COPY(state->variable_lower_bound, rescale_info->scaled_problem->variable_lower_bound, var_bytes);
-    ALLOC_AND_COPY(state->variable_upper_bound, rescale_info->scaled_problem->variable_upper_bound, var_bytes);
-    ALLOC_AND_COPY(state->objective_vector, rescale_info->scaled_problem->objective_vector, var_bytes);
-    ALLOC_AND_COPY(state->constraint_lower_bound, rescale_info->scaled_problem->constraint_lower_bound, con_bytes);
-    ALLOC_AND_COPY(state->constraint_upper_bound, rescale_info->scaled_problem->constraint_upper_bound, con_bytes);
-    ALLOC_AND_COPY(state->constraint_rescaling, rescale_info->con_rescale, con_bytes);
-    ALLOC_AND_COPY(state->variable_rescaling, rescale_info->var_rescale, var_bytes);
-
-    state->constraint_bound_rescaling = rescale_info->con_bound_rescale;
-    state->objective_vector_rescaling = rescale_info->obj_vec_rescale;
 
 #define ALLOC_ZERO(dest, bytes)           \
     CUDA_CHECK(cudaMalloc(&dest, bytes)); \
@@ -240,20 +258,7 @@ static pdhg_solver_state_t *initialize_solver_state(
         free(rescaled);
     }
 
-    double *temp_host = (double *)safe_malloc(fmax(var_bytes, con_bytes));
-    for (int i = 0; i < n_cons; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->constraint_lower_bound[i]) ? rescale_info->scaled_problem->constraint_lower_bound[i] : 0.0;
-    ALLOC_AND_COPY(state->constraint_lower_bound_finite_val, temp_host, con_bytes);
-    for (int i = 0; i < n_cons; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->constraint_upper_bound[i]) ? rescale_info->scaled_problem->constraint_upper_bound[i] : 0.0;
-    ALLOC_AND_COPY(state->constraint_upper_bound_finite_val, temp_host, con_bytes);
-    for (int i = 0; i < n_vars; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->variable_lower_bound[i]) ? rescale_info->scaled_problem->variable_lower_bound[i] : 0.0;
-    ALLOC_AND_COPY(state->variable_lower_bound_finite_val, temp_host, var_bytes);
-    for (int i = 0; i < n_vars; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->variable_upper_bound[i]) ? rescale_info->scaled_problem->variable_upper_bound[i] : 0.0;
-    ALLOC_AND_COPY(state->variable_upper_bound_finite_val, temp_host, var_bytes);
-    free(temp_host);
+    rescale_info_free(rescale_info);
 
     double sum_of_squares = 0.0;
 
@@ -285,6 +290,7 @@ static pdhg_solver_state_t *initialize_solver_state(
     state->num_blocks_primal = (state->num_variables + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_dual = (state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_primal_dual = (state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    state->num_blocks_nnz = (state->constraint_matrix->num_nonzeros + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
@@ -732,10 +738,8 @@ void rescale_info_free(rescale_info_t *info)
         return;
     }
 
-    lp_problem_free(info->scaled_problem);
     free(info->con_rescale);
     free(info->var_rescale);
-
     free(info);
 }
 

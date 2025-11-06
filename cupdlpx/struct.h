@@ -120,6 +120,7 @@ typedef struct
 	int num_blocks_primal;
 	int num_blocks_dual;
 	int num_blocks_primal_dual;
+	int num_blocks_nnz;
 	double objective_vector_norm;
 	double constraint_bound_norm;
 	double *constraint_lower_bound_finite_val;
