@@ -128,7 +128,7 @@ static void scale_problem(
     invert_vec_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(E, invE, n_cons);
     invert_vec_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(D, invD, n_vars);
 
-    scale_variables_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
+    scale_variables_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         state->objective_vector,
         state->variable_lower_bound,
         state->variable_upper_bound,
@@ -146,7 +146,7 @@ static void scale_problem(
         invE,
         n_cons);
 
-    csr_scale_nnz_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK>>>(
+    csr_scale_nnz_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
         state->constraint_matrix->row_ind,
         state->constraint_matrix->col_ind,
         state->constraint_matrix->val,
