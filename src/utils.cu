@@ -207,6 +207,8 @@ const char *termination_reason_to_string(termination_reason_t reason)
     case TERMINATION_REASON_ITERATION_LIMIT:
         return "ITERATION_LIMIT";
     case TERMINATION_REASON_UNSPECIFIED:
+    case TERMINATION_REASON_FEAS_POLISH_SUCCESS:
+        return "FEAS_POLISH_SUCCESS";
     default:
         return "UNSPECIFIED";
     }
@@ -994,7 +996,6 @@ void check_feas_polishing_termination_criteria(
         return;
     }
 }
-
 
 void print_initial_feas_polish_info(bool is_primal_polish, const pdhg_parameters_t *params)
 {

@@ -32,7 +32,7 @@ extern "C"
 		TERMINATION_REASON_DUAL_INFEASIBLE,
 		TERMINATION_REASON_TIME_LIMIT,
 		TERMINATION_REASON_ITERATION_LIMIT,
-		TERMINATION_REASON_FEAS_POLISH_SUCCESS
+		TERMINATION_REASON_FEAS_POLISH_SUCCESS,
 	} termination_reason_t;
 
 	typedef struct
@@ -76,6 +76,7 @@ extern "C"
 		int iteration_limit;
 		double eps_feas_polish_relative;
 	} termination_criteria_t;
+
 
 	typedef struct
 	{

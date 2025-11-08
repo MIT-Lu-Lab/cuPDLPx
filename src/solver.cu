@@ -81,6 +81,7 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(
 static pdhg_solver_state_t *initialize_dual_feas_polish_state(
     const pdhg_solver_state_t *original_state);
 void lp_problem_free(lp_problem_t *prob);
+
 void pdhg_solver_state_free(pdhg_solver_state_t *state);
 void rescale_info_free(rescale_info_t *info);
 void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
@@ -99,6 +100,8 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
 
     rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
+    double init_step_size = state->step_size;
+    double init_primal_weight = state->primal_weight;
     clock_t start_time = clock();
     bool do_restart = false;
     while (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
