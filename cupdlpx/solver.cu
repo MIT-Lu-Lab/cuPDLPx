@@ -370,19 +370,22 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(
     SET_FINITE_TO_ZERO(dual_state->variable_lower_bound, num_var);
     SET_FINITE_TO_ZERO(dual_state->variable_upper_bound, num_var);
 
-    CUDA_CHECK(cudaMemset(dual_state->constraint_lower_bound_finite_val, 0, num_cons * sizeof(double)));
-    CUDA_CHECK(cudaMemset(dual_state->constraint_upper_bound_finite_val, 0, num_cons * sizeof(double)));
-    CUDA_CHECK(cudaMemset(dual_state->variable_lower_bound_finite_val, 0, num_var * sizeof(double)));
-    CUDA_CHECK(cudaMemset(dual_state->variable_upper_bound_finite_val, 0, num_var * sizeof(double)));
+    #define ALLOC_ZERO(dest, bytes)           \
+        CUDA_CHECK(cudaMalloc(&dest, bytes)); \
+        CUDA_CHECK(cudaMemset(dest, 0, bytes));
+
+    ALLOC_ZERO(dual_state->constraint_lower_bound_finite_val, num_cons * sizeof(double));
+    ALLOC_ZERO(dual_state->constraint_upper_bound_finite_val, num_cons * sizeof(double));
+    ALLOC_ZERO(dual_state->variable_lower_bound_finite_val, num_var * sizeof(double));
+    ALLOC_ZERO(dual_state->variable_upper_bound_finite_val, num_var * sizeof(double));
 
     //ALLOCATE AND COPY SOLUTION VECTORS
-
-    
     ALLOC_AND_COPY_DEV(dual_state->initial_dual_solution, original_state->initial_dual_solution, num_cons * sizeof(double));
     ALLOC_AND_COPY_DEV(dual_state->current_dual_solution, original_state->current_dual_solution, num_cons * sizeof(double));
     ALLOC_AND_COPY_DEV(dual_state->pdhg_dual_solution, original_state->pdhg_dual_solution, num_cons * sizeof(double));
     ALLOC_AND_COPY_DEV(dual_state->reflected_dual_solution, original_state->reflected_dual_solution, num_cons * sizeof(double));
     ALLOC_AND_COPY_DEV(dual_state->dual_product, original_state->dual_product, num_var * sizeof(double));
+    ALLOC_AND_COPY_DEV(dual_state->dual_slack, original_state->dual_slack, num_var * sizeof(double));
 
     #define ALLOC_ZERO(dest, bytes)           \
         CUDA_CHECK(cudaMalloc(&dest, bytes)); \
@@ -394,7 +397,6 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(
     ALLOC_ZERO(dual_state->pdhg_primal_solution, num_var * sizeof(double));
     ALLOC_ZERO(dual_state->reflected_primal_solution, num_var * sizeof(double));
     ALLOC_ZERO(dual_state->primal_product, num_cons * sizeof(double));
-    ALLOC_ZERO(dual_state->dual_slack, num_var * sizeof(double));
     ALLOC_ZERO(dual_state->primal_slack, num_cons * sizeof(double));
     ALLOC_ZERO(dual_state->dual_residual, num_var * sizeof(double));
     ALLOC_ZERO(dual_state->primal_residual, num_cons * sizeof(double));

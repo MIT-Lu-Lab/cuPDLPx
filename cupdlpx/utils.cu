@@ -701,7 +701,7 @@ void compute_primal_residual(pdhg_solver_state_t *state)
 
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
 
-    compute_primal_residual_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+    compute_primal_residual_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->primal_residual, state->primal_product, state->constraint_lower_bound,
         state->constraint_upper_bound, state->constraint_rescaling,
         state->num_constraints);
@@ -719,7 +719,7 @@ void compute_dual_residual(pdhg_solver_state_t *state)
 
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
-    compute_dual_residual_kerenl<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    compute_dual_residual_kerenl<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         state->dual_residual, state->dual_product,
         state->dual_slack, state->objective_vector,
         state->variable_rescaling,
