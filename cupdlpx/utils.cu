@@ -359,8 +359,8 @@ void print_initial_feas_polish_info(bool is_primal_polish, const pdhg_parameters
            is_primal_polish ? "Primal" : "Dual",
            params->termination_criteria.eps_feas_polish_relative);
     printf("---------------------------------------------------------------------------------------\n");
-    if (is_primal_polish) printf("%s %s | %s | %s | %s \n",  "  iter", "  time ", " pr obj ", " abs pr res ", " rel pr res ");
-    else printf("%s %s | %s | %s | %s \n",  "  iter", "  time ", " du obj ", " abs du res ", " rel du res ");
+    if (is_primal_polish) printf("%s %s | %s | %s \n",  "  iter", "  time ", " abs pr res ", " rel pr res ");
+    else printf("%s %s | %s | %s \n",  "  iter", "  time ", " abs du res ", " rel du res ");
     printf("---------------------------------------------------------------------------------------\n");
 }
 
@@ -403,19 +403,17 @@ void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state, bool 
     {
         if (is_primal_polish)
         {
-            printf("%6d %.1e | %8.1e |    %.1e   |   %.1e   \n",
+            printf("%6d %.1e |    %.1e   |   %.1e   \n",
                 state->total_count,
                 state->cumulative_time_sec,
-                state->primal_objective_value,
                 state->absolute_primal_residual,
                 state->relative_primal_residual);
         }
         else
         {
-            printf("%6d %.1e | %8.1e |    %.1e   |   %.1e   \n",
+            printf("%6d %.1e |    %.1e   |   %.1e   \n",
                 state->total_count,
                 state->cumulative_time_sec,
-                state->dual_objective_value,
                 state->absolute_dual_residual,
                 state->relative_dual_residual);
         }
