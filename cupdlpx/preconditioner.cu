@@ -450,6 +450,31 @@ rescale_info_t *rescale_problem(
                               n_vars*sizeof(double), cudaMemcpyHostToDevice));
     }
 
+    double *E=nullptr, *D=nullptr, *invE=nullptr, *invD=nullptr;
+    CUDA_CHECK(cudaMalloc(&E, n_cons*sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&D, n_vars*sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&invE, n_cons*sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&invD, n_vars*sizeof(double)));
+
+    if (params->l_inf_ruiz_iterations > 0)
+    {
+        ruiz_rescaling(state, params->l_inf_ruiz_iterations, rescale_info, E, D, invE, invD);
+    }
+    if (params->has_pock_chambolle_alpha)
+    {
+        pock_chambolle_rescaling(state, params->pock_chambolle_alpha, rescale_info, E, D, invE, invD);
+    }
+    if (params->bound_objective_rescaling)
+    {
+        bound_objective_rescaling(state, rescale_info, E, D, invE, invD);
+    }
+
+    rescale_info->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
+
+    CUDA_CHECK(cudaFree(E));
+    CUDA_CHECK(cudaFree(D));
+    CUDA_CHECK(cudaFree(invE));
+    CUDA_CHECK(cudaFree(invD));
     
     return rescale_info;
 }
