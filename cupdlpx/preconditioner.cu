@@ -19,12 +19,15 @@ limitations under the License.
 #include <time.h>
 #include <stdio.h>
 #include <math.h>
-
+#include <vector>
 #include <cuda_runtime.h>
+#include <cublas_v2.h>
 
 #define SCALING_EPSILON 1e-12
 
-__global__ void invert_vec_kernel(const double* __restrict__ x, double* __restrict__ invx, int n);
+__global__ void invert_vec_kernel(const double* __restrict__ x, 
+                                  double* __restrict__ invx, 
+                                  int n);
 __global__ void scale_variables_kernel(double* __restrict__ c,
                                        double* __restrict__ var_lb,
                                        double* __restrict__ var_ub,
@@ -45,18 +48,38 @@ __global__ void csr_scale_nnz_kernel(const int* __restrict__ row_ids,
                                      const double* __restrict__ invD,
                                      const double* __restrict__ invE,
                                      int nnz);
-static void scale_problem(pdhg_solver_state_t *state, const double *con_rescale, const double *var_rescale);
-static void ruiz_rescaling(pdhg_solver_state_t *state, int num_iters, double *cum_con_rescale, double *cum_var_rescale);
-static void pock_chambolle_rescaling(pdhg_solver_state_t *state, double alpha, double *cum_con_rescale, double *cum_var_rescale);
-static void bound_objective_rescaling(pdhg_solver_state_t *state, rescale_info_t *rescale_info);
-
-__global__ void invert_vec_kernel(const double* __restrict__ x, double* __restrict__ invx, int n) {
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= n) return;
-    double v = x[t];
-    if (fabs(v) < SCALING_EPSILON) v = (v < 0 ? -SCALING_EPSILON : SCALING_EPSILON);
-    invx[t] = 1.0 / v;
-}
+__global__ void csr_row_absmax_kernel(const int* __restrict__ row_ptr,
+                                      const double* __restrict__ vals,
+                                      int num_rows,
+                                      double* __restrict__ out_max);
+__global__ void csr_col_absmax_atomic_kernel(const int* __restrict__ col_ind,
+                                             const double* __restrict__ vals,
+                                             int nnz,
+                                             unsigned long long* __restrict__ out_max_bits);
+__global__ void u64bits_to_double(const unsigned long long* __restrict__ in_bits,
+                                  double* __restrict__ out_val,
+                                  int n);
+__global__ void csr_row_powsum_kernel(const int* __restrict__ row_ptr,
+                                          const double* __restrict__ vals,
+                                          int num_rows,
+                                          double degree,
+                                          double* __restrict__ out_sum);
+__global__ void csr_col_powsum_atomic_kernel(const int* __restrict__ col_ind,
+                                                const double* __restrict__ vals,
+                                                int nnz,
+                                                double degree,
+                                                double* __restrict__ out_sum);
+__global__ void clamp_sqrt_and_accum(double* __restrict__ x,
+                                     double* __restrict__ inv_x,
+                                     double* __restrict__ cum, 
+                                     int n);
+static void scale_problem(pdhg_solver_state_t *state, double *E, double *D, double *invE, double *invD);
+static void ruiz_rescaling(pdhg_solver_state_t *state, int num_iters, rescale_info_t *rescale_info,
+                           double *E, double *D, double *invE, double *invD);
+static void pock_chambolle_rescaling(pdhg_solver_state_t *state, double alpha, rescale_info_t *rescale_info,
+                                     double *E, double *D, double *invE, double *invD);
+static void bound_objective_rescaling(pdhg_solver_state_t *state, rescale_info_t *rescale_info,
+                                     double *E, double *D, double *invE, double *invD);
 
 __global__ void scale_variables_kernel(double* __restrict__ c,
                                        double* __restrict__ var_lb,
@@ -111,22 +134,126 @@ __global__ void csr_scale_nnz_kernel(const int* __restrict__ row_ids,
     }
 }
 
+__global__ void csr_row_absmax_kernel(const int* __restrict__ row_ptr,
+                                      const double* __restrict__ vals,
+                                      int num_rows,
+                                      double* __restrict__ out_max)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_rows) return;
+    int s = row_ptr[i], e = row_ptr[i + 1];
+    double m = 0.0;
+    for (int k = s; k < e; ++k) {
+        double v = fabs(vals[k]);
+        if (!isfinite(v)) v = 0.0;
+        if (v > m) m = v;
+    }
+    out_max[i] = m;
+}
+
+__global__ void csr_col_absmax_atomic_kernel(const int* __restrict__ col_ind,
+                                             const double* __restrict__ vals,
+                                             int nnz,
+                                             unsigned long long* __restrict__ out_max_bits)
+{
+    for (int k = blockIdx.x * blockDim.x + threadIdx.x; k < nnz; k += gridDim.x * blockDim.x) {
+        int j = col_ind[k];
+        double v = fabs(vals[k]);
+        if (!isfinite(v)) v = 0.0;
+        unsigned long long bits = __double_as_longlong(v);
+        atomicMax(&out_max_bits[j], bits);
+    }
+}
+
+__global__ void u64bits_to_double(const unsigned long long* __restrict__ in_bits,
+                                  double* __restrict__ out_val,
+                                  int n)
+{
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += gridDim.x * blockDim.x) {
+        out_val[i] = __longlong_as_double(in_bits[i]);
+    }
+}
+
+__device__ __forceinline__ double pow_fast(double v, double p) {
+    if (p == 2.0)   return v * v;
+    if (p == 1.0)   return v;
+    if (p == 0.5)   return sqrt(v);
+    return pow(v, p);
+}
+
+__global__ void csr_row_powsum_kernel(const int* __restrict__ row_ptr,
+                                       const double* __restrict__ vals,
+                                       int num_rows,
+                                       double degree,
+                                       double* __restrict__ out_sum)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_rows) return;
+    int s = row_ptr[i], e = row_ptr[i + 1];
+    double acc = 0.0;
+    for (int k = s; k < e; ++k) {
+        double v = fabs(vals[k]);
+        if (!isfinite(v)) v = 0.0;
+        acc += pow_fast(v, degree);
+    }
+    out_sum[i] = acc;
+}
+
+__global__ void csr_col_powsum_atomic_kernel(const int* __restrict__ col_ind,
+                                                const double* __restrict__ vals,
+                                                int nnz,
+                                                double degree,
+                                                double* __restrict__ out_sum)
+{
+    for (int k = blockIdx.x * blockDim.x + threadIdx.x; k < nnz; k += gridDim.x * blockDim.x) {
+        int j = col_ind[k];
+        double v = fabs(vals[k]);
+        if (!isfinite(v)) v = 0.0;
+        double t = pow_fast(v, degree);
+        atomicAdd(&out_sum[j], t);
+    }
+}
+
+__global__ void clamp_sqrt_and_accum(double* __restrict__ x, 
+                                     double* __restrict__ inv_x,
+                                     double* __restrict__ cum, 
+                                     int n) 
+{
+    for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n; t += blockDim.x * gridDim.x)
+    {
+        double v = x[t]; 
+        double s = (v < SCALING_EPSILON) ? 1.0 : sqrt(v); 
+        cum[t] *= s; 
+        x[t] = s;
+        inv_x[t] = 1.0 / s;
+    }
+}
+
+__global__ void reduce_bound_norm_sq_atomic(
+    const double* __restrict__ L,
+    const double* __restrict__ U,
+    int m,
+    double* __restrict__ out_sum)
+{
+    double acc = 0.0;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < m; i += blockDim.x * gridDim.x) {
+        double Li = L[i], Ui = U[i];
+        bool fL = isfinite(Li), fU = isfinite(Ui);
+        if (fL && (!fU || fabs(Li - Ui) > SCALING_EPSILON)) acc += Li * Li;
+        if (fU)                                 acc += Ui * Ui;
+    }
+    atomicAdd(out_sum, acc);
+}
+
 static void scale_problem(
     pdhg_solver_state_t *state,
-    const double *constraint_rescaling,
-    const double *variable_rescaling)
+    double *E,
+    double *D,
+    double *invE,
+    double *invD)
 {
-    const double *E = constraint_rescaling;
-    const double *D = variable_rescaling;
-
     int n_vars = state->num_variables;
     int n_cons = state->num_constraints;
-
-    double *invE=nullptr, *invD=nullptr;
-    CUDA_CHECK(cudaMalloc(&invE, n_cons*sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&invD, n_vars*sizeof(double)));
-    invert_vec_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(E, invE, n_cons);
-    invert_vec_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(D, invD, n_vars);
 
     scale_variables_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         state->objective_vector,
@@ -153,143 +280,153 @@ static void scale_problem(
         invD,
         invE,
         state->constraint_matrix->num_nonzeros);
-
-    CUDA_CHECK(cudaFree(invE));
-    CUDA_CHECK(cudaFree(invD));
 }
 
 static void ruiz_rescaling(
     pdhg_solver_state_t *state,
     int num_iterations,
-    double *cum_constraint_rescaling,
-    double *cum_variable_rescaling)
+    rescale_info_t *rescale_info,
+    double *E,
+    double *D,
+    double *invE,
+    double *invD)
 {
-    int n_cons = state->num_constraints;
-    int n_vars = state->num_variables;
-    double *con_rescale = (double*)safe_malloc(n_cons * sizeof(double));
-    double *var_rescale = (double*)safe_malloc(n_vars * sizeof(double));
+    const int n_cons = state->num_constraints;
+    const int n_vars = state->num_variables;
+    const int nnz    = state->constraint_matrix->num_nonzeros;
+
+    unsigned long long *D_bits=nullptr;
+    CUDA_CHECK(cudaMalloc(&D_bits, n_vars*sizeof(unsigned long long)));
 
     for (int iter = 0; iter < num_iterations; ++iter)
     {
-        for (int i = 0; i < n_vars; ++i)
-            var_rescale[i] = 0.0;
-        for (int i = 0; i < n_cons; ++i)
-            con_rescale[i] = 0.0;
+        csr_row_absmax_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+            state->constraint_matrix->row_ptr,
+            state->constraint_matrix->val,
+            n_cons,
+            E);
+        clamp_sqrt_and_accum<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+            E,
+            invE,
+            rescale_info->con_rescale,
+            n_cons);
 
-        for (int row = 0; row < n_cons; ++row)
-        {
-            for (int nz_idx = state->constraint_matrix_row_pointers[row];
-                 nz_idx < state->constraint_matrix_row_pointers[row + 1]; ++nz_idx)
-            {
-                int col = state->constraint_matrix_col_indices[nz_idx];
-                if (col < 0 || col >= n_vars)
-                {
-                    fprintf(stderr, "Error: Invalid column index %d at nz_idx %d for row %d. Must be in [0, %d).\n",
-                            col, nz_idx, row, n_vars);
-                }
-                double val = fabs(state->constraint_matrix_values[nz_idx]);
-                if (val > var_rescale[col])
-                    var_rescale[col] = val;
-                if (val > con_rescale[row])
-                    con_rescale[row] = val;
-            }
-        }
+        CUDA_CHECK(cudaMemset(D_bits, 0, n_vars*sizeof(unsigned long long)));
+        csr_col_absmax_atomic_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
+            state->constraint_matrix->col_ind,
+            state->constraint_matrix->val,
+            nnz,
+            D_bits);
+        u64bits_to_double<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(D_bits, D, n_vars); 
+        clamp_sqrt_and_accum<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+            D,
+            invD,
+            rescale_info->var_rescale,
+            n_vars);
 
-        for (int i = 0; i < n_vars; ++i)
-            var_rescale[i] = (var_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(var_rescale[i]);
-        for (int i = 0; i < n_cons; ++i)
-            con_rescale[i] = (con_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(con_rescale[i]);
-
-        scale_problem(state, con_rescale, var_rescale);
-        for (int i = 0; i < n_vars; ++i)
-            cum_variable_rescaling[i] *= var_rescale[i];
-        for (int i = 0; i < n_cons; ++i)
-            cum_constraint_rescaling[i] *= con_rescale[i];
+        scale_problem(state, E, D, invE, invD);
     }
-    free(con_rescale);
-    free(var_rescale);
+
+    CUDA_CHECK(cudaFree(D_bits));
 }
 
 static void pock_chambolle_rescaling(
     pdhg_solver_state_t *state,
     const double alpha,
-    double *cum_constraint_rescaling,
-    double *cum_variable_rescaling)
+    rescale_info_t *rescale_info,
+    double *E,
+    double *D,
+    double *invE,
+    double *invD)
 {
-    int num_cons = state->num_constraints;
-    int num_vars = state->num_variables;
-    double *con_rescale = (double*)safe_calloc(num_cons, sizeof(double));
-    double *var_rescale = (double*)safe_calloc(num_vars, sizeof(double));
+    const int n_cons = state->num_constraints;
+    const int n_vars = state->num_variables;
+    const int nnz    = state->constraint_matrix->num_nonzeros;
 
-    for (int row = 0; row < num_cons; ++row)
-    {
-        for (int nz_idx = state->constraint_matrix_row_pointers[row];
-             nz_idx < state->constraint_matrix_row_pointers[row + 1]; ++nz_idx)
-        {
-            int col = state->constraint_matrix_col_indices[nz_idx];
-            double val = fabs(state->constraint_matrix_values[nz_idx]);
-            var_rescale[col] += pow(val, 2.0 - alpha);
-            con_rescale[row] += pow(val, alpha);
-        }
-    }
+    csr_row_powsum_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix->row_ptr,
+        state->constraint_matrix->val,
+        n_cons,
+        alpha,
+        E);
+    clamp_sqrt_and_accum<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        E,
+        invE,
+        rescale_info->con_rescale,
+        n_cons);
+        
+    CUDA_CHECK(cudaMemset(D, 0, n_vars*sizeof(double)));
+    csr_col_powsum_atomic_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix->col_ind,
+        state->constraint_matrix->val,
+        nnz,
+        2.0 - alpha,
+        D);
+    clamp_sqrt_and_accum<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        D,
+        invD,
+        rescale_info->var_rescale,
+        n_vars);
 
-    for (int i = 0; i < num_vars; ++i)
-        var_rescale[i] = (var_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(var_rescale[i]);
-    for (int i = 0; i < num_cons; ++i)
-        con_rescale[i] = (con_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(con_rescale[i]);
+    scale_problem(state, E, D, invE, invD);
 
-    scale_problem(state, con_rescale, var_rescale);
-    for (int i = 0; i < num_vars; ++i)
-        cum_variable_rescaling[i] *= var_rescale[i];
-    for (int i = 0; i < num_cons; ++i)
-        cum_constraint_rescaling[i] *= con_rescale[i];
-
-    free(con_rescale);
-    free(var_rescale);
 }
 
 static void bound_objective_rescaling(
     pdhg_solver_state_t *state,
-    rescale_info_t *rescale_info
-)
+    rescale_info_t *rescale_info,
+    double *E,
+    double *D,
+    double *invE,
+    double *invD
+    )
 {
+    const int n_cons = state->num_constraints;
+    const int n_vars = state->num_variables;
 
-    int n_cons = state->num_constraints;
-    int n_vars = state->num_variables;
+    double *bnd_norm_sq_cuda = nullptr;
+    CUDA_CHECK(cudaMalloc(&bnd_norm_sq_cuda, sizeof(double)));
+    CUDA_CHECK(cudaMemset(bnd_norm_sq_cuda, 0, sizeof(double)));
+    reduce_bound_norm_sq_atomic<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        state->constraint_lower_bound,
+        state->constraint_upper_bound,
+        n_cons,
+        bnd_norm_sq_cuda);
+    
+    double bnd_norm_sq = 0.0;
+    CUDA_CHECK(cudaMemcpy(&bnd_norm_sq, bnd_norm_sq_cuda, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(bnd_norm_sq_cuda));
+    double bnd_norm = sqrt(bnd_norm_sq);
 
-    double bound_norm_sq = 0.0;
-    for (int i = 0; i < n_cons; ++i)
+    double obj_norm = 0.0;
+    CUBLAS_CHECK(cublasDnrm2(state->blas_handle,
+                             state->num_variables,
+                             state->objective_vector, 1,
+                             &obj_norm));
+
+    const double E_const = bnd_norm + 1.0;
+    const double D_const = obj_norm + 1.0;
     {
-        if (isfinite(state->constraint_lower_bound[i]) && (state->constraint_lower_bound[i] != state->constraint_upper_bound[i]))
-        {
-            bound_norm_sq += state->constraint_lower_bound[i] * state->constraint_lower_bound[i];
-        }
-        if (isfinite(state->constraint_upper_bound[i]))
-        {
-            bound_norm_sq += state->constraint_upper_bound[i] * state->constraint_upper_bound[i];
-        }
+        std::vector<double> h1(n_cons,E_const), h2(n_vars,D_const);
+        CUDA_CHECK(cudaMemcpy(E, h1.data(), n_cons*sizeof(double), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(D, h2.data(), n_vars*sizeof(double), cudaMemcpyHostToDevice));
+        std::vector<double> h3(n_cons,1/E_const), h4(n_vars,1/D_const);
+        CUDA_CHECK(cudaMemcpy(invE, h3.data(), n_cons*sizeof(double), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(invD, h4.data(), n_vars*sizeof(double), cudaMemcpyHostToDevice));
     }
 
-    double obj_norm_sq = 0.0;
-    for (int i = 0; i < n_vars; ++i)
-    {
-         obj_norm_sq += state->objective_vector[i] * state->objective_vector[i];
-    }
+    CUBLAS_CHECK(cublasDscal(state->blas_handle,
+                             n_cons,
+                             &E_const,
+                             rescale_info->con_rescale,
+                             1));
+    CUBLAS_CHECK(cublasDscal(state->blas_handle,
+                             n_vars,
+                             &D_const,
+                             rescale_info->var_rescale,
+                             1));
 
-    rescale_info->con_bound_rescale = 1.0 / (sqrt(bound_norm_sq) + 1.0);
-    rescale_info->obj_vec_rescale = 1.0 / (sqrt(obj_norm_sq) + 1.0);
-
-    for (int i = 0; i < n_cons; ++i)
-    {
-        state->constraint_lower_bound[i] *= rescale_info->con_bound_rescale;
-        state->constraint_upper_bound[i] *= rescale_info->con_bound_rescale;
-    }
-    for (int i = 0; i < n_vars; ++i)
-    {
-        state->variable_lower_bound[i] *= rescale_info->con_bound_rescale;
-        state->variable_upper_bound[i] *= rescale_info->con_bound_rescale;
-        state->objective_vector[i] *= rescale_info->obj_vec_rescale;
-    }
+    scale_problem(state, E, D, invE, invD);
 }
 
 rescale_info_t *rescale_problem(
@@ -301,35 +438,18 @@ rescale_info_t *rescale_problem(
 
     clock_t start_rescaling = clock();
     rescale_info_t *rescale_info = (rescale_info_t *)safe_calloc(1, sizeof(rescale_info_t));
-
-    int n_vars = state->num_variables;
-    int n_cons = state->num_constraints;
-
-    rescale_info->con_rescale = (double *)safe_malloc(n_cons * sizeof(double));
-    rescale_info->var_rescale = (double *)safe_malloc(n_vars * sizeof(double));
-    for (int i = 0; i < n_cons; ++i)
-        rescale_info->con_rescale[i] = 1.0;
-    for (int i = 0; i < n_vars; ++i)
-        rescale_info->var_rescale[i] = 1.0;
-
-    if (params->l_inf_ruiz_iterations > 0)
+    rescale_info->con_rescale = nullptr;
+    rescale_info->var_rescale = nullptr;
+    CUDA_CHECK(cudaMalloc(&rescale_info->con_rescale, n_cons*sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&rescale_info->var_rescale, n_vars*sizeof(double)));
     {
-        ruiz_rescaling(state, params->l_inf_ruiz_iterations, rescale_info->con_rescale, rescale_info->var_rescale);
+        std::vector<double> h1(n_cons,1.0), h2(n_vars,1.0);
+        CUDA_CHECK(cudaMemcpy(rescale_info->con_rescale, h1.data(), 
+                              n_cons*sizeof(double), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(rescale_info->var_rescale, h2.data(), 
+                              n_vars*sizeof(double), cudaMemcpyHostToDevice));
     }
 
-    if (params->has_pock_chambolle_alpha)
-    {
-        pock_chambolle_rescaling(state, params->pock_chambolle_alpha, rescale_info->con_rescale, rescale_info->var_rescale);
-    }
-    
-    rescale_info->con_bound_rescale = 1.0;
-    rescale_info->obj_vec_rescale = 1.0;
-    if (params->bound_objective_rescaling)
-    {
-        bound_objective_rescaling(state, rescale_info);
-    }
-
-    rescale_info->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
     
     return rescale_info;
 }

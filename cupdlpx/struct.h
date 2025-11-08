@@ -67,8 +67,6 @@ typedef struct
 {
 	double *con_rescale;
 	double *var_rescale;
-	double con_bound_rescale;
-	double obj_vec_rescale;
 	double rescaling_time_sec;
 } rescale_info_t;
 

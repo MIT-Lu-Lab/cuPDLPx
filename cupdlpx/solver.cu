@@ -46,8 +46,8 @@ __global__ void halpern_update_kernel(
     const double *initial_dual, double *current_dual, const double *reflected_dual,
     int n_vars, int n_cons, double weight, double reflection_coeff);
 __global__ void rescale_solution_kernel(
-    double *primal_solution, double *dual_solution, const double *variable_rescaling, const double *constraint_rescaling,
-    const double objective_vector_rescaling, const double constraint_bound_rescaling,
+    double *primal_solution, double *dual_solution, 
+    const double *variable_rescaling, const double *constraint_rescaling,
     int n_vars, int n_cons);
 __global__ void compute_delta_solution_kernel(
     const double *initial_primal, const double *pdhg_primal, double *delta_primal,
@@ -60,7 +60,7 @@ static void rescale_solution(pdhg_solver_state_t *state);
 static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state);
 static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
-static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *original_problem);
+static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *original_problem, const pdhg_parameters_t* params);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 void lp_problem_free(lp_problem_t *prob);
 void pdhg_solver_state_free(pdhg_solver_state_t *state);
@@ -185,21 +185,19 @@ static pdhg_solver_state_t *initialize_solver_state(
     ALLOC_AND_COPY(state->variable_upper_bound_finite_val, temp_host, var_bytes);
     free(temp_host);
 
+    CUSPARSE_CHECK(cusparseCreate(&state->sparse_handle));
+    CUBLAS_CHECK(cublasCreate(&state->blas_handle));
+    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle, CUBLAS_POINTER_MODE_HOST));
+
     rescale_info_t *rescale_info = rescale_problem(params, state);
 
     ALLOC_AND_COPY(state->constraint_rescaling, rescale_info->con_rescale, con_bytes);
     ALLOC_AND_COPY(state->variable_rescaling, rescale_info->var_rescale, var_bytes);
-    state->constraint_bound_rescaling = rescale_info->con_bound_rescale;
-    state->objective_vector_rescaling = rescale_info->obj_vec_rescale;
     state->rescaling_time_sec = rescale_info->rescaling_time_sec;
 
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ptr, (n_vars + 1) * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->col_ind, original_problem->constraint_matrix_num_nonzeros * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->val, original_problem->constraint_matrix_num_nonzeros * sizeof(double)));
-
-    CUSPARSE_CHECK(cusparseCreate(&state->sparse_handle));
-    CUBLAS_CHECK(cublasCreate(&state->blas_handle));
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle, CUBLAS_POINTER_MODE_HOST));
 
     size_t buffer_size = 0;
     void *buffer = nullptr;
@@ -246,14 +244,14 @@ static pdhg_solver_state_t *initialize_solver_state(
     if (original_problem->primal_start) {
         double *rescaled = (double *)safe_malloc(var_bytes);
         for (int i = 0; i < n_vars; ++i)
-            rescaled[i] = original_problem->primal_start[i] * rescale_info->var_rescale[i] * rescale_info->con_bound_rescale;
+            rescaled[i] = original_problem->primal_start[i] * rescale_info->var_rescale[i];
         CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, rescaled, var_bytes, cudaMemcpyHostToDevice));
         free(rescaled);
     }
     if (original_problem->dual_start) {
         double *rescaled = (double *)safe_malloc(con_bytes);
         for (int i = 0; i < n_cons; ++i)
-            rescaled[i] = original_problem->dual_start[i] * rescale_info->con_rescale[i] * rescale_info->obj_vec_rescale;
+            rescaled[i] = original_problem->dual_start[i] * rescale_info->con_rescale[i];
         CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, rescaled, con_bytes, cudaMemcpyHostToDevice));
         free(rescaled);
     }
@@ -419,19 +417,19 @@ __global__ void halpern_update_kernel(
 }
 
 __global__ void rescale_solution_kernel(
-    double *primal_solution, double *dual_solution, const double *variable_rescaling, const double *constraint_rescaling,
-    const double objective_vector_rescaling, const double constraint_bound_rescaling,
+    double *primal_solution, double *dual_solution, 
+    const double *variable_rescaling, const double *constraint_rescaling,
     int n_vars, int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
     {
-        primal_solution[i] = primal_solution[i] / variable_rescaling[i] / constraint_bound_rescaling;
+        primal_solution[i] = primal_solution[i] / variable_rescaling[i];
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        dual_solution[idx] = dual_solution[idx] / constraint_rescaling[idx] / objective_vector_rescaling;
+        dual_solution[idx] = dual_solution[idx] / constraint_rescaling[idx];
     }
 }
 
@@ -521,7 +519,6 @@ static void rescale_solution(pdhg_solver_state_t *state)
     rescale_solution_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK>>>(
         state->pdhg_primal_solution, state->pdhg_dual_solution,
         state->variable_rescaling, state->constraint_rescaling,
-        state->objective_vector_rescaling, state->constraint_bound_rescaling,
         state->num_variables, state->num_constraints);
 }
 
