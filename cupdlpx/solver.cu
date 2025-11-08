@@ -76,6 +76,8 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state);
 void rescale_info_free(rescale_info_t *info);
 void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state);
 void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state);
+void primal_feas_polish_state_free(pdhg_solver_state_t *state);
+void dual_feas_polish_state_free(pdhg_solver_state_t *state);
 
 cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *original_problem)
 {
@@ -146,23 +148,25 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
         dual_state->step_size = init_step_size;
         dual_state->primal_weight = init_primal_weight;
-        dual_feasibility_polish(params, dual_state);   
-        cupdlpx_result_t *results = create_result_from_state(state);
+        dual_feasibility_polish(params, dual_state);
 
         if (primal_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS
             && dual_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
         {
-            results->primal_solution = primal_state->pdhg_primal_solution;
-            results->dual_solution = dual_state->pdhg_dual_solution;
+            CUDA_CHECK(cudaMemcpy(
+                state->pdhg_primal_solution, primal_state->pdhg_primal_solution,
+                state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaMemcpy(
+                state->pdhg_dual_solution, dual_state->pdhg_dual_solution,
+                state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
         }
-        return results;
+        primal_feas_polish_state_free(primal_state);
+        dual_feas_polish_state_free(dual_state);
     }
-    else
-    {
-        cupdlpx_result_t *results = create_result_from_state(state);
-        pdhg_solver_state_free(state);
-        return results;
-    }
+
+    cupdlpx_result_t *results = create_result_from_state(state);
+    pdhg_solver_state_free(state);
+    return results;
 }
 
 void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
@@ -325,6 +329,76 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(
     primal_state->objective_gap = 0.0;
 
     return primal_state;
+}
+
+void primal_feas_polish_state_free(pdhg_solver_state_t *state)
+{
+    #define SAFE_CUDA_FREE(p)   \
+    if ((p) != NULL) {          \
+        CUDA_CHECK(cudaFree(p));\
+        (p) = NULL;             \
+    }                           \
+    
+    if (!state) return;
+    SAFE_CUDA_FREE(state->objective_vector);
+    SAFE_CUDA_FREE(state->initial_primal_solution);
+    SAFE_CUDA_FREE(state->current_primal_solution);
+    SAFE_CUDA_FREE(state->pdhg_primal_solution);
+    SAFE_CUDA_FREE(state->reflected_primal_solution);
+
+    SAFE_CUDA_FREE(state->dual_product);
+    SAFE_CUDA_FREE(state->initial_dual_solution);
+    SAFE_CUDA_FREE(state->current_dual_solution);
+    SAFE_CUDA_FREE(state->pdhg_dual_solution);
+    SAFE_CUDA_FREE(state->reflected_dual_solution);
+    SAFE_CUDA_FREE(state->primal_product);
+    
+    SAFE_CUDA_FREE(state->primal_slack);
+    SAFE_CUDA_FREE(state->dual_slack);
+    SAFE_CUDA_FREE(state->primal_residual);
+    SAFE_CUDA_FREE(state->dual_residual);
+    SAFE_CUDA_FREE(state->delta_primal_solution);
+    SAFE_CUDA_FREE(state->delta_dual_solution);
+    free(state);
+}
+
+void dual_feas_polish_state_free(pdhg_solver_state_t *state)
+{
+    #define SAFE_CUDA_FREE(p)   \
+    if ((p) != NULL) {          \
+        CUDA_CHECK(cudaFree(p));\
+        (p) = NULL;             \
+    }                           \
+    
+    if (!state) return;
+    SAFE_CUDA_FREE(state->constraint_lower_bound);
+    SAFE_CUDA_FREE(state->constraint_upper_bound);
+    SAFE_CUDA_FREE(state->variable_lower_bound);
+    SAFE_CUDA_FREE(state->variable_upper_bound);
+    SAFE_CUDA_FREE(state->constraint_lower_bound_finite_val);
+    SAFE_CUDA_FREE(state->constraint_upper_bound_finite_val);
+    SAFE_CUDA_FREE(state->variable_lower_bound_finite_val);
+    SAFE_CUDA_FREE(state->variable_upper_bound_finite_val);
+
+    SAFE_CUDA_FREE(state->initial_primal_solution);
+    SAFE_CUDA_FREE(state->current_primal_solution);
+    SAFE_CUDA_FREE(state->pdhg_primal_solution);
+    SAFE_CUDA_FREE(state->reflected_primal_solution);
+
+    SAFE_CUDA_FREE(state->dual_product);
+    SAFE_CUDA_FREE(state->initial_dual_solution);
+    SAFE_CUDA_FREE(state->current_dual_solution);
+    SAFE_CUDA_FREE(state->pdhg_dual_solution);
+    SAFE_CUDA_FREE(state->reflected_dual_solution);
+    SAFE_CUDA_FREE(state->primal_product);
+    
+    SAFE_CUDA_FREE(state->primal_slack);
+    SAFE_CUDA_FREE(state->dual_slack);
+    SAFE_CUDA_FREE(state->primal_residual);
+    SAFE_CUDA_FREE(state->dual_residual);
+    SAFE_CUDA_FREE(state->delta_primal_solution);
+    SAFE_CUDA_FREE(state->delta_dual_solution);
+    free(state);
 }
 
 __global__ void zero_finite_value_vectors_kernel(
@@ -996,83 +1070,53 @@ static void compute_dual_fixed_point_error(pdhg_solver_state_t *state)
     state->fixed_point_error = dual_norm * dual_norm / state->primal_weight;
 }
 
+
+
 void pdhg_solver_state_free(pdhg_solver_state_t *state)
 {
-    if (state == NULL)
-    {
-        return;
-    }
+    #define SAFE_CUDA_FREE(p)   \
+    if ((p) != NULL) {          \
+        CUDA_CHECK(cudaFree(p));\
+        (p) = NULL;             \
+    }                           \
+    
+    if (!state) return;
 
-    if (state->variable_lower_bound)
-        CUDA_CHECK(cudaFree(state->variable_lower_bound));
-    if (state->variable_upper_bound)
-        CUDA_CHECK(cudaFree(state->variable_upper_bound));
-    if (state->objective_vector)
-        CUDA_CHECK(cudaFree(state->objective_vector));
-    if (state->constraint_matrix->row_ptr)
-        CUDA_CHECK(cudaFree(state->constraint_matrix->row_ptr));
-    if (state->constraint_matrix->col_ind)
-        CUDA_CHECK(cudaFree(state->constraint_matrix->col_ind));
-    if (state->constraint_matrix->val)
-        CUDA_CHECK(cudaFree(state->constraint_matrix->val));
-    if (state->constraint_matrix_t->row_ptr)
-        CUDA_CHECK(cudaFree(state->constraint_matrix_t->row_ptr));
-    if (state->constraint_matrix_t->col_ind)
-        CUDA_CHECK(cudaFree(state->constraint_matrix_t->col_ind));
-    if (state->constraint_matrix_t->val)
-        CUDA_CHECK(cudaFree(state->constraint_matrix_t->val));
-    if (state->constraint_lower_bound)
-        CUDA_CHECK(cudaFree(state->constraint_lower_bound));
-    if (state->constraint_upper_bound)
-        CUDA_CHECK(cudaFree(state->constraint_upper_bound));
-    if (state->constraint_lower_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->constraint_lower_bound_finite_val));
-    if (state->constraint_upper_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->constraint_upper_bound_finite_val));
-    if (state->variable_lower_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->variable_lower_bound_finite_val));
-    if (state->variable_upper_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->variable_upper_bound_finite_val));
-    if (state->initial_primal_solution)
-        CUDA_CHECK(cudaFree(state->initial_primal_solution));
-    if (state->current_primal_solution)
-        CUDA_CHECK(cudaFree(state->current_primal_solution));
-    if (state->pdhg_primal_solution)
-        CUDA_CHECK(cudaFree(state->pdhg_primal_solution));
-    if (state->reflected_primal_solution)
-        CUDA_CHECK(cudaFree(state->reflected_primal_solution));
-    if (state->dual_product)
-        CUDA_CHECK(cudaFree(state->dual_product));
-    if (state->initial_dual_solution)
-        CUDA_CHECK(cudaFree(state->initial_dual_solution));
-    if (state->current_dual_solution)
-        CUDA_CHECK(cudaFree(state->current_dual_solution));
-    if (state->pdhg_dual_solution)
-        CUDA_CHECK(cudaFree(state->pdhg_dual_solution));
-    if (state->reflected_dual_solution)
-        CUDA_CHECK(cudaFree(state->reflected_dual_solution));
-    if (state->primal_product)
-        CUDA_CHECK(cudaFree(state->primal_product));
-    if (state->constraint_rescaling)
-        CUDA_CHECK(cudaFree(state->constraint_rescaling));
-    if (state->variable_rescaling)
-        CUDA_CHECK(cudaFree(state->variable_rescaling));
-    if (state->primal_slack)
-        CUDA_CHECK(cudaFree(state->primal_slack));
-    if (state->dual_slack)
-        CUDA_CHECK(cudaFree(state->dual_slack));
-    if (state->primal_residual)
-        CUDA_CHECK(cudaFree(state->primal_residual));
-    if (state->dual_residual)
-        CUDA_CHECK(cudaFree(state->dual_residual));
-    if (state->delta_primal_solution)
-        CUDA_CHECK(cudaFree(state->delta_primal_solution));
-    if (state->delta_dual_solution)
-        CUDA_CHECK(cudaFree(state->delta_dual_solution));
-    if (state->ones_primal_d)
-        CUDA_CHECK(cudaFree(state->ones_primal_d));
-    if (state->ones_dual_d)
-        CUDA_CHECK(cudaFree(state->ones_dual_d));
+    SAFE_CUDA_FREE(state->variable_lower_bound);
+    SAFE_CUDA_FREE(state->variable_upper_bound);
+    SAFE_CUDA_FREE(state->objective_vector);
+    SAFE_CUDA_FREE(state->constraint_matrix->row_ptr);
+    SAFE_CUDA_FREE(state->constraint_matrix->col_ind);
+    SAFE_CUDA_FREE(state->constraint_matrix->val);
+    SAFE_CUDA_FREE(state->constraint_matrix_t->row_ptr);
+    SAFE_CUDA_FREE(state->constraint_matrix_t->col_ind);
+    SAFE_CUDA_FREE(state->constraint_matrix_t->val);
+    SAFE_CUDA_FREE(state->constraint_lower_bound);
+    SAFE_CUDA_FREE(state->constraint_upper_bound);
+    SAFE_CUDA_FREE(state->constraint_lower_bound_finite_val);
+    SAFE_CUDA_FREE(state->constraint_upper_bound_finite_val);
+    SAFE_CUDA_FREE(state->variable_lower_bound_finite_val);
+    SAFE_CUDA_FREE(state->variable_upper_bound_finite_val);
+    SAFE_CUDA_FREE(state->initial_primal_solution);
+    SAFE_CUDA_FREE(state->current_primal_solution);
+    SAFE_CUDA_FREE(state->pdhg_primal_solution);
+    SAFE_CUDA_FREE(state->reflected_primal_solution);
+    SAFE_CUDA_FREE(state->dual_product);
+    SAFE_CUDA_FREE(state->initial_dual_solution);
+    SAFE_CUDA_FREE(state->current_dual_solution);
+    SAFE_CUDA_FREE(state->pdhg_dual_solution);
+    SAFE_CUDA_FREE(state->reflected_dual_solution);
+    SAFE_CUDA_FREE(state->primal_product);
+    SAFE_CUDA_FREE(state->constraint_rescaling);
+    SAFE_CUDA_FREE(state->variable_rescaling);
+    SAFE_CUDA_FREE(state->primal_slack);
+    SAFE_CUDA_FREE(state->dual_slack);
+    SAFE_CUDA_FREE(state->primal_residual);
+    SAFE_CUDA_FREE(state->dual_residual);
+    SAFE_CUDA_FREE(state->delta_primal_solution);
+    SAFE_CUDA_FREE(state->delta_dual_solution);
+    SAFE_CUDA_FREE(state->ones_primal_d);
+    SAFE_CUDA_FREE(state->ones_dual_d);
 
     free(state);
 }
