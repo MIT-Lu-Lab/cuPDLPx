@@ -59,7 +59,8 @@ typedef enum
 	TERMINATION_REASON_PRIMAL_INFEASIBLE,
 	TERMINATION_REASON_DUAL_INFEASIBLE,
 	TERMINATION_REASON_TIME_LIMIT,
-	TERMINATION_REASON_ITERATION_LIMIT
+	TERMINATION_REASON_ITERATION_LIMIT,
+	TERMINATION_REASON_FEAS_POLISH_SUCCESS,
 } termination_reason_t;
 
 typedef struct
@@ -90,6 +91,7 @@ typedef struct
 	double eps_infeasible;
 	double time_sec_limit;
 	int iteration_limit;
+	double eps_feas_polish_relative;
 } termination_criteria_t;
 
 typedef struct
@@ -103,6 +105,7 @@ typedef struct
 	termination_criteria_t termination_criteria;
 	restart_parameters_t restart_params;
 	double reflection_coefficient;
+	bool feasibility_polishing;
 } pdhg_parameters_t;
 
 typedef struct

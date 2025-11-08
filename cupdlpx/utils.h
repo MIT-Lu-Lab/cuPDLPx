@@ -96,18 +96,33 @@ extern "C"
         pdhg_solver_state_t *solver_state,
         const termination_criteria_t *criteria);
 
+    void check_feas_polishing_termination_criteria(
+        pdhg_solver_state_t *solver_state,
+        const termination_criteria_t *criteria,
+        bool is_primal_polish);
+
     void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *problem);
+    
+    void print_initial_feas_polish_info(bool is_primal_polish, const pdhg_parameters_t *params);
+
+    void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state, bool verbose,  bool is_primal_polish);
 
     void pdhg_final_log(
         const pdhg_solver_state_t *solver_state,
         bool verbose,
         termination_reason_t termination_reason);
 
+    void pdhg_feas_polish_final_log(const pdhg_solver_state_t *state, bool verbose, termination_reason_t reason, bool is_primal_polish);
+
     void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose);
 
     const char *termination_reason_to_string(termination_reason_t reason);
 
     int get_print_frequency(int iter);
+
+    void compute_primal_residual(pdhg_solver_state_t *state);
+
+    void compute_dual_residual(pdhg_solver_state_t *state);
 
     void compute_residual(pdhg_solver_state_t *state);
 

@@ -60,3 +60,4 @@ test/*
 /.vscode
 /.venv
 /_b
+data/*
