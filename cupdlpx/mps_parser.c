@@ -14,11 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-
 #include "mps_parser.h"
 #include "utils.h"
 #include "solver.h"
-#include "mps_parser.h"
 #include "utils.h"
 #include <stdlib.h>
 #include <string.h>
@@ -891,9 +889,5 @@ static void free_parser_state(MpsParserState *state)
     free(state->constraint_lower_bounds);
     free(state->constraint_upper_bounds);
     free(state->objective_row_name);
-<<<<<<<< HEAD:cupdlpx/mps_parser.c
-    free(state->current_col_name);
-========
     free(state->current_col_name);
 }
->>>>>>>> 13afe8f (Clean code: io -> parser + preconditioner):cupdlpx/parser.c
