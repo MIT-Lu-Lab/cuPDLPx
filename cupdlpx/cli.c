@@ -21,7 +21,8 @@ limitations under the License.
 #include <getopt.h>
 #include <string.h>
 #include <libgen.h>
-#include "io.h"
+#include "mps_parser.h"
+#include "preconditioner.h"
 #include "struct.h"
 #include "solver.h"
 

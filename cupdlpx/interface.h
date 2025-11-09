@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "struct.h"
 #include "utils.h"
-#include "io.h"
+#include "solver.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,10 +43,6 @@ cupdlpx_result_t* solve_lp_problem(
     const lp_problem_t* prob,
     const pdhg_parameters_t* params
 );
-
-// free memory
-void lp_problem_free(lp_problem_t* prob);
-void cupdlpx_result_free(cupdlpx_result_t* res);
 
 // parameter
 void set_default_parameters(pdhg_parameters_t *params);

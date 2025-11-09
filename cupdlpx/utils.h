@@ -127,7 +127,18 @@ extern "C"
     void compute_residual(pdhg_solver_state_t *state);
 
     void compute_infeasibility_information(pdhg_solver_state_t *state);
+    
+    void fill_or_copy(double **dest, int n, const double *src, double fill_value);
 
+    int dense_to_csr(const matrix_desc_t* desc,
+                     int** row_ptr, int** col_ind, double** vals, int* nnz_out);
+
+    int csc_to_csr(const matrix_desc_t* desc,
+                   int** row_ptr, int** col_ind, double** vals, int* nnz_out);
+
+    int coo_to_csr(const matrix_desc_t* desc,
+                   int** row_ptr, int** col_ind, double** vals, int* nnz_out); 
+                   
 #ifdef __cplusplus
 }
 

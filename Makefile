@@ -38,7 +38,7 @@ NVCCFLAGS += -I$(GEN_DIR)
 $(BUILD_DIR)/utils.o: $(VERSION_H)
 
 # Source discovery (exclude the debug main)
-C_SOURCES = $(filter-out $(SRC_DIR)/cupdlpx.c, $(wildcard $(SRC_DIR)/*.c))
+C_SOURCES = $(filter-out $(SRC_DIR)/cli.c, $(wildcard $(SRC_DIR)/*.c))
 CU_SOURCES = $(wildcard $(SRC_DIR)/*.cu)
 
 C_OBJECTS = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(C_SOURCES))
@@ -48,9 +48,17 @@ OBJECTS = $(C_OBJECTS) $(CU_OBJECTS)
 TARGET_STATIC = $(BUILD_DIR)/libcupdlpx.a
 TARGET_SHARED = $(BUILD_DIR)/libcupdlpx.so
 
-# Debug executable (optional)
-DEBUG_SRC = $(SRC_DIR)/cupdlpx.c
-DEBUG_EXEC = $(BUILD_DIR)/cupdlpx
+# CLI executable 
+CLI_SRC := $(SRC_DIR)/cli.c
+CLI_BIN := $(BUILD_DIR)/cupdlpx
+
+.PHONY: cli
+cli: $(CLI_BIN)
+
+$(CLI_BIN): $(CLI_SRC) $(TARGET_STATIC) $(VERSION_H)
+	@echo "Building CLI $(CLI_BIN)..."
+	@mkdir -p $(BUILD_DIR)
+	@$(LINKER) $(NVCCFLAGS) $(CLI_SRC) -o $(CLI_BIN) $(TARGET_STATIC) $(LDFLAGS)
 
 # Tests auto-discovery
 TEST_DIR := ./test
@@ -81,12 +89,8 @@ shared: $(OBJECTS)
 	@mkdir -p $(BUILD_DIR)
 	$(NVCC) -shared -o $(TARGET_SHARED) $(OBJECTS) $(LDFLAGS) --cudart=shared
 
-# Build the debug executable (links the library with cupdlpx.c main)
-build: $(DEBUG_EXEC)
-
-$(DEBUG_EXEC): $(DEBUG_SRC) $(TARGET_STATIC)
-	@echo "Building debug executable..."
-	@$(LINKER) $(NVCCFLAGS) $(DEBUG_SRC) -o $(DEBUG_EXEC) $(TARGET_STATIC) $(LDFLAGS)
+# Build the CLI executable
+build: cli
 
 # Pattern rules for objects
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
@@ -157,5 +161,5 @@ clean-tests:
 
 clean:
 	@echo "Cleaning up..."
-	@rm -rf $(BUILD_DIR) $(TARGET_STATIC) $(TARGET_SHARED) $(DEBUG_EXEC)
+	@rm -rf $(BUILD_DIR) $(TARGET_STATIC) $(TARGET_SHARED)
 	@rm -rf $(TEST_BUILD_DIR)

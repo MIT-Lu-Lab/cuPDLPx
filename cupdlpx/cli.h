@@ -18,26 +18,6 @@ limitations under the License.
 
 #include "struct.h"
 #include "utils.h"
+#include "mps_parser.h"
 #include "preconditioner.h"
-#include <cuda_runtime.h>
-#include <cusparse.h>
-#include <cublas_v2.h>
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-    cupdlpx_result_t *optimize(
-        const pdhg_parameters_t *params,
-        const lp_problem_t *original_problem);
-
-    void set_default_parameters(pdhg_parameters_t *params);
-
-    void lp_problem_free(lp_problem_t *prob);
-
-    void cupdlpx_result_free(cupdlpx_result_t *results);
-
-#ifdef __cplusplus
-}
-#endif
+#include "solver.h"

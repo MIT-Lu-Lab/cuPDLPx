@@ -82,7 +82,7 @@ static void test_warm_start(const char* tag,
     int m = A_desc->m;
 
     lp_problem_t* prob = create_lp_problem(
-        A_desc, c, NULL, NULL, NULL, l, u
+        c, A_desc, l, u, NULL, NULL, NULL
     );
     if (!prob) {
         fprintf(stderr, "[test] create_lp_problem failed for %s.\n", tag);
@@ -97,9 +97,6 @@ static void test_warm_start(const char* tag,
 
     set_start_values(prob, primal, dual);
 
-    free(primal);
-    free(dual);
-
     cupdlpx_result_t* res = solve_lp_problem(prob, NULL);
     if (!res) {
         fprintf(stderr, "[test] solve_lp_problem failed for %s.\n", tag);
@@ -110,6 +107,9 @@ static void test_warm_start(const char* tag,
     print_vec("x", res->primal_solution, res->num_variables);
     print_vec("y", res->dual_solution, res->num_constraints);
 
+    
+    free(primal);
+    free(dual);
     cupdlpx_result_free(res);
     lp_problem_free(prob);
 }
