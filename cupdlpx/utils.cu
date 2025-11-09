@@ -547,17 +547,15 @@ void compute_residual(pdhg_solver_state_t *state)
         state->num_constraints, state->num_variables);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_constraints, state->primal_residual, 1, &state->absolute_primal_residual));
-    state->absolute_primal_residual /= state->constraint_bound_rescaling;
     CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_variables, state->dual_residual, 1, &state->absolute_dual_residual));
-    state->absolute_dual_residual /= state->objective_vector_rescaling;
 
     CUBLAS_CHECK(cublasDdot(state->blas_handle, state->num_variables, state->objective_vector, 1, state->pdhg_primal_solution, 1, &state->primal_objective_value));
-    state->primal_objective_value = state->primal_objective_value / (state->constraint_bound_rescaling * state->objective_vector_rescaling) + state->objective_constant;
+    state->primal_objective_value = state->primal_objective_value + state->objective_constant;
 
     double base_dual_objective;
     CUBLAS_CHECK(cublasDdot(state->blas_handle, state->num_variables, state->dual_slack, 1, state->pdhg_primal_solution, 1, &base_dual_objective));
     double dual_slack_sum = get_vector_sum(state->blas_handle, state->num_constraints, state->ones_dual_d, state->primal_slack);
-    state->dual_objective_value = (base_dual_objective + dual_slack_sum) / (state->constraint_bound_rescaling * state->objective_vector_rescaling) + state->objective_constant;
+    state->dual_objective_value = (base_dual_objective + dual_slack_sum) + state->objective_constant;
 
     state->relative_primal_residual = state->absolute_primal_residual / (1.0 + state->constraint_bound_norm);
     state->relative_dual_residual = state->absolute_dual_residual / (1.0 + state->objective_vector_norm);
@@ -588,7 +586,6 @@ void compute_infeasibility_information(pdhg_solver_state_t *state)
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
     CUBLAS_CHECK(cublasDdot(state->blas_handle, state->num_variables, state->objective_vector, 1, state->delta_primal_solution, 1, &state->primal_ray_linear_objective));
-    state->primal_ray_linear_objective /= (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 
     dual_solution_dual_objective_contribution_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_lower_bound_finite_val,
@@ -606,7 +603,6 @@ void compute_infeasibility_information(pdhg_solver_state_t *state)
 
     double sum_primal_slack = get_vector_sum(state->blas_handle, state->num_constraints, state->ones_dual_d, state->primal_slack);
     double sum_dual_slack = get_vector_sum(state->blas_handle, state->num_variables, state->ones_primal_d, state->dual_slack);
-    state->dual_ray_objective = (sum_primal_slack + sum_dual_slack) / (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 
     compute_primal_infeasibility_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(state->primal_product, state->constraint_lower_bound, state->constraint_upper_bound, state->num_constraints, state->primal_slack, state->constraint_rescaling);
     compute_dual_infeasibility_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(state->dual_product, state->variable_lower_bound, state->variable_upper_bound, state->num_variables, state->dual_slack, state->variable_rescaling);

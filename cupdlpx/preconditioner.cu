@@ -25,14 +25,12 @@ limitations under the License.
 
 #define SCALING_EPSILON 1e-12
 
-__global__ void invert_vec_kernel(const double* __restrict__ x, 
-                                  double* __restrict__ invx, 
-                                  int n);
 __global__ void scale_variables_kernel(double* __restrict__ c,
                                        double* __restrict__ var_lb,
                                        double* __restrict__ var_ub,
                                        double* __restrict__ var_lb_finite,
                                        double* __restrict__ var_ub_finite,
+                                       double* __restrict__ primal_start,
                                        const double* __restrict__ D,
                                        const double* __restrict__ invD,
                                        int n);
@@ -40,6 +38,8 @@ __global__ void scale_constraints_kernel(double* __restrict__ con_lb,
                                          double* __restrict__ con_ub,
                                          double* __restrict__ con_lb_finite,
                                          double* __restrict__ con_ub_finite,
+                                         double* __restrict__ dual_start,
+                                         const double* __restrict__ E,
                                          const double* __restrict__ invE,
                                          int m);
 __global__ void csr_scale_nnz_kernel(const int* __restrict__ row_ids,
@@ -86,6 +86,7 @@ __global__ void scale_variables_kernel(double* __restrict__ c,
                                        double* __restrict__ var_ub,
                                        double* __restrict__ var_lb_finite,
                                        double* __restrict__ var_ub_finite,
+                                       double* __restrict__ primal_start,
                                        const double* __restrict__ D,
                                        const double* __restrict__ invD,
                                        int n)
@@ -99,22 +100,27 @@ __global__ void scale_variables_kernel(double* __restrict__ c,
     var_ub[j] *= dj;
     var_lb_finite[j] *= dj;
     var_ub_finite[j] *= dj;
+    primal_start[j] *= dj;
 }
 
 __global__ void scale_constraints_kernel(double* __restrict__ con_lb,
                                          double* __restrict__ con_ub,
                                          double* __restrict__ con_lb_finite,
                                          double* __restrict__ con_ub_finite,
+                                         double* __restrict__ dual_start,
+                                         const double* __restrict__ E,
                                          const double* __restrict__ invE,
                                          int m)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= m) return;
     double inv_ei = invE[i];
+    double ei = E[i];
     con_lb[i] *= inv_ei;
     con_ub[i] *= inv_ei;
     con_lb_finite[i] *= inv_ei;
     con_ub_finite[i] *= inv_ei;
+    dual_start[i] *= ei;
 }
 
 __global__ void csr_scale_nnz_kernel(const int* __restrict__ row_ids,
@@ -261,6 +267,7 @@ static void scale_problem(
         state->variable_upper_bound,
         state->variable_lower_bound_finite_val,
         state->variable_upper_bound_finite_val,
+        state->initial_primal_solution,
         D,
         invD,
         n_vars);
@@ -270,6 +277,8 @@ static void scale_problem(
         state->constraint_upper_bound,
         state->constraint_lower_bound_finite_val,
         state->constraint_upper_bound_finite_val,
+        state->initial_dual_solution,
+        E,
         invE,
         n_cons);
 

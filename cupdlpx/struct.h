@@ -147,8 +147,6 @@ typedef struct
 
 	double *constraint_rescaling;
 	double *variable_rescaling;
-	double constraint_bound_rescaling;
-	double objective_vector_rescaling;
 	double *primal_slack;
 	double *dual_slack;
 	double rescaling_time_sec;

@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "cupdlpx"
-version = "0.1.2"
+version = "0.1.3"
 description = "Python bindings for cuPDLPx (GPU-accelerated first-order LP solver)"
 readme = "README.md"
 license = { text = "Apache-2.0" }

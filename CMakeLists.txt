@@ -71,7 +71,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
 # -----------------------------------------------------------------------------
 add_library(cupdlpx_core STATIC
   cupdlpx/interface.c
-  cupdlpx/preconditioner.c
+  cupdlpx/preconditioner.cu
   cupdlpx/solver.cu
   cupdlpx/utils.cu
 )
