@@ -112,7 +112,7 @@ extern "C"
         bool verbose,
         termination_reason_t termination_reason);
 
-    void pdhg_feas_polish_final_log(const pdhg_solver_state_t *state, bool verbose, termination_reason_t reason, bool is_primal_polish);
+    void pdhg_feas_polish_final_log(const pdhg_solver_state_t *primal_state, const pdhg_solver_state_t *dual_state, bool verbose);
 
     void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose);
 
@@ -120,9 +120,9 @@ extern "C"
 
     int get_print_frequency(int iter);
 
-    void compute_primal_residual(pdhg_solver_state_t *state);
+    void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
 
-    void compute_dual_residual(pdhg_solver_state_t *state);
+    void compute_dual_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
 
     void compute_residual(pdhg_solver_state_t *state);
 

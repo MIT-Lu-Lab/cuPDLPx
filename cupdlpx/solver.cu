@@ -75,8 +75,8 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(
 void lp_problem_free(lp_problem_t *prob);
 void pdhg_solver_state_free(pdhg_solver_state_t *state);
 void rescale_info_free(rescale_info_t *info);
-void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state);
-void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state);
+void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
+void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
 void primal_feas_polish_state_free(pdhg_solver_state_t *state);
 void dual_feas_polish_state_free(pdhg_solver_state_t *state);
 
@@ -143,13 +143,15 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         pdhg_solver_state_t *primal_state = initialize_primal_feas_polish_state(state);
         primal_state->step_size = init_step_size;
         primal_state->primal_weight = init_primal_weight;
-        primal_feasibility_polish(params, primal_state);
+        primal_feasibility_polish(params, primal_state, state);
 
         //DUAL FEASIBILITY POLISHING
         pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
         dual_state->step_size = init_step_size;
         dual_state->primal_weight = init_primal_weight;
-        dual_feasibility_polish(params, dual_state);
+        dual_feasibility_polish(params, dual_state, state);
+
+        pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
 
         if (primal_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS
             && dual_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
@@ -170,7 +172,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     return results;
 }
 
-void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
+void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state)
 {
     print_initial_feas_polish_info(true, params);
     clock_t start_time = clock();
@@ -179,7 +181,7 @@ void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_stat
     {
         if ((state->is_this_major_iteration || state->total_count == 0) || (state->total_count % get_print_frequency(state->total_count) == 0))
         {
-            compute_primal_residual(state);
+            compute_primal_feas_polish_residual(state, ori_state);
 
             state->cumulative_time_sec = (double)(clock() - start_time) / CLOCKS_PER_SEC;
 
@@ -213,12 +215,10 @@ void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_stat
         state->inner_count++;
         state->total_count++;
     }
-
-    pdhg_feas_polish_final_log(state, params->verbose, state->termination_reason, true);
     return;
 }
 
-void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
+void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state)
 {
     print_initial_feas_polish_info(false, params);
     clock_t start_time = clock();
@@ -227,7 +227,7 @@ void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_
     {
         if ((state->is_this_major_iteration || state->total_count == 0) || (state->total_count % get_print_frequency(state->total_count) == 0))
         {
-            compute_dual_residual(state);
+            compute_dual_feas_polish_residual(state, ori_state);
 
             state->cumulative_time_sec = (double)(clock() - start_time) / CLOCKS_PER_SEC;
 
@@ -261,8 +261,6 @@ void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_
         state->inner_count++;
         state->total_count++;
     }
-
-    pdhg_feas_polish_final_log(state, params->verbose, state->termination_reason, false);
     return;
 }
 
@@ -426,7 +424,7 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(
         CUDA_CHECK(cudaMalloc(&dest, bytes)); \
         CUDA_CHECK(cudaMemcpy(dest, src, bytes, cudaMemcpyDeviceToDevice));
 
-    //RESET PROBLEM TO Unconstrained DUAL FEASIBILITY PROBLEM
+    //RESET PROBLEM TO DUAL FEASIBILITY PROBLEM
     #define SET_FINITE_TO_ZERO(vec, n) \
         { \
             int threads = 256; \
