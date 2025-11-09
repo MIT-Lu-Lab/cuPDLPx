@@ -8,13 +8,15 @@ SRC_DIR = ./cupdlpx
 BUILD_DIR = ./build
 
 # CFLAGS for C compiler (gcc)
-CFLAGS = -I. -I$(CUDA_HOME)/include -fPIC -O3 -Wall -Wextra -g
+CFLAGS = -I. -I$(CUDA_HOME)/include -fPIC -O3 -Wall -Wextra -g \
+		-Wno-deprecated-declarations
 
 # NVCCFLAGS for CUDA compiler (nvcc)
 GPU_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n 1 | sed 's/\.//')
 NVCCFLAGS = -I. -I$(CUDA_HOME)/include -O3 -g \
             -gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH) \
-            -Xcompiler -fPIC  -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX)
+            -Xcompiler -fPIC  -Xcompiler -gdwarf-4 -ccbin $(SYSTEM_GXX) \
+			-Xcompiler -Wno-deprecated-declarations
 
 # LDFLAGS for the linker
 LDFLAGS = -L$(CUDA_HOME)/lib -L$(CUDA_HOME)/lib64 -lcudart -lcusparse -lcublas -lz -lm
