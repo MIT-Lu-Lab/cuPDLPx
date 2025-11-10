@@ -79,6 +79,7 @@ void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_stat
 void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
 void primal_feas_polish_state_free(pdhg_solver_state_t *state);
 void dual_feas_polish_state_free(pdhg_solver_state_t *state);
+void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state);
 
 cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *original_problem)
 {
@@ -88,8 +89,6 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
     rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
-    double init_step_size = state->step_size;
-    double init_primal_weight = state->primal_weight;
     clock_t start_time = clock();
     bool do_restart = false;
     while (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
@@ -137,39 +136,66 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
     pdhg_final_log(state, params->verbose, state->termination_reason);
 
-    if (params->feasibility_polishing)
-    {
-        //PRIMAL FEASIBILITY POLISHING
-        pdhg_solver_state_t *primal_state = initialize_primal_feas_polish_state(state);
-        primal_state->step_size = init_step_size;
-        primal_state->primal_weight = init_primal_weight;
-        primal_feasibility_polish(params, primal_state, state);
-
-        //DUAL FEASIBILITY POLISHING
-        pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
-        dual_state->step_size = init_step_size;
-        dual_state->primal_weight = init_primal_weight;
-        dual_feasibility_polish(params, dual_state, state);
-
-        pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
-
-        if (primal_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS
-            && dual_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
-        {
-            CUDA_CHECK(cudaMemcpy(
-                state->pdhg_primal_solution, primal_state->pdhg_primal_solution,
-                state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
-            CUDA_CHECK(cudaMemcpy(
-                state->pdhg_dual_solution, dual_state->pdhg_dual_solution,
-                state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
-        }
-        primal_feas_polish_state_free(primal_state);
-        dual_feas_polish_state_free(dual_state);
-    }
+    feasibility_polish(params, state);
 
     cupdlpx_result_t *results = create_result_from_state(state);
     pdhg_solver_state_free(state);
     return results;
+}
+
+void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
+{
+    if (params->feasibility_polishing)
+    {
+        if (state->relative_primal_residual < params->termination_criteria.eps_feas_polish_relative &&
+            state->relative_dual_residual < params->termination_criteria.eps_feas_polish_relative)
+        {
+            
+            printf("Skipping feasibility polishing as the solution is already sufficiently feasible.\n");
+            return;
+        }
+        double original_primal_weight = 0.0;
+        if (params->bound_objective_rescaling)
+        {
+            original_primal_weight = 1.0;
+        }
+        else
+        {
+            original_primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
+        }
+
+        //PRIMAL FEASIBILITY POLISHING
+        pdhg_solver_state_t *primal_state = initialize_primal_feas_polish_state(state);
+        primal_state->primal_weight = original_primal_weight;
+        primal_state->best_primal_weight = original_primal_weight;
+        primal_feasibility_polish(params, primal_state, state);
+
+        if (primal_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
+        {
+            CUDA_CHECK(cudaMemcpy(
+                state->pdhg_primal_solution, primal_state->pdhg_primal_solution,
+                state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+        }
+        
+        //DUAL FEASIBILITY POLISHING
+        pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
+        dual_state->primal_weight = original_primal_weight;
+        dual_state->best_primal_weight = original_primal_weight;
+        dual_feasibility_polish(params, dual_state, state);
+
+        if (dual_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
+        {
+            CUDA_CHECK(cudaMemcpy(
+                state->pdhg_dual_solution, dual_state->pdhg_dual_solution,
+                state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+        }
+
+        // FINAL LOGGING
+        pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
+        primal_feas_polish_state_free(primal_state);
+        dual_feas_polish_state_free(dual_state);
+    }
+    return;
 }
 
 void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state)
@@ -313,7 +339,8 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(
     primal_state->fixed_point_error = INFINITY;
     primal_state->initial_fixed_point_error = INFINITY;
     primal_state->last_trial_fixed_point_error = INFINITY;
-    primal_state->step_size = 0.0;
+    primal_state->step_size = original_state->step_size;
+    primal_state->primal_weight = original_state->primal_weight;
     primal_state->is_this_major_iteration = false;
     primal_state->total_count = 0;
     primal_state->inner_count = 0;
@@ -483,7 +510,8 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(
     dual_state->fixed_point_error = INFINITY;
     dual_state->initial_fixed_point_error = INFINITY;
     dual_state->last_trial_fixed_point_error = INFINITY;
-    dual_state->step_size = 0.0;
+    dual_state->step_size = original_state->step_size;
+    dual_state->primal_weight = original_state->primal_weight;
     dual_state->is_this_major_iteration = false;
     dual_state->total_count = 0;
     dual_state->inner_count = 0;
