@@ -100,8 +100,6 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
 
     rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
-    double init_step_size = state->step_size;
-    double init_primal_weight = state->primal_weight;
     clock_t start_time = clock();
     bool do_restart = false;
     while (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
