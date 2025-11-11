@@ -175,6 +175,9 @@ void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *st
             CUDA_CHECK(cudaMemcpy(
                 state->pdhg_primal_solution, primal_state->pdhg_primal_solution,
                 state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+            state->absolute_primal_residual = primal_state->absolute_primal_residual;
+            state->relative_primal_residual = primal_state->relative_primal_residual;
+            state->primal_objective_value = primal_state->primal_objective_value;
         }
         
         //DUAL FEASIBILITY POLISHING
@@ -188,7 +191,13 @@ void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *st
             CUDA_CHECK(cudaMemcpy(
                 state->pdhg_dual_solution, dual_state->pdhg_dual_solution,
                 state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+            state->absolute_dual_residual = dual_state->absolute_dual_residual;
+            state->relative_dual_residual = dual_state->relative_dual_residual;
+            state->dual_objective_value = dual_state->dual_objective_value;
         }
+
+        state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
+        state->relative_objective_gap = state->objective_gap / (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
 
         // FINAL LOGGING
         pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
