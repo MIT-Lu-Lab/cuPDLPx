@@ -125,6 +125,9 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
     fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
     fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
     fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
+    if(result->feasibility_polishing_time > 0.0){
+        fprintf(outfile, "Feasibility Polishing Time (sec): %e\n", result->feasibility_polishing_time);
+    }
     fclose(outfile);
     free(file_path);
 }

@@ -147,6 +147,7 @@ void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *st
 {
     if (params->feasibility_polishing)
     {
+        clock_t start_time = clock();
         if (state->relative_primal_residual < params->termination_criteria.eps_feas_polish_relative &&
             state->relative_dual_residual < params->termination_criteria.eps_feas_polish_relative)
         {
@@ -203,6 +204,8 @@ void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *st
         pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
         primal_feas_polish_state_free(primal_state);
         dual_feas_polish_state_free(dual_state);
+
+        state->feasibilitly_polishing_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
     }
     return;
 }
@@ -1228,6 +1231,7 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state)
     results->primal_ray_linear_objective = state->primal_ray_linear_objective;
     results->dual_ray_objective = state->dual_ray_objective;
     results->termination_reason = state->termination_reason;
+    results->feasibility_polishing_time = state->feasibilitly_polishing_time;
 
     return results;
 }
