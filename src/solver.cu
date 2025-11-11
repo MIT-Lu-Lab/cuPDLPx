@@ -14,48 +14,56 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include "cupdlpx.h"
+#include "internal_types.h"
+#include "preconditioner.h"
 #include "solver.h"
 #include "utils.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <time.h>
-#include <stdbool.h>
-
-#include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <cuda_runtime.h>
 #include <cusparse.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <time.h>
 
 __global__ void compute_next_pdhg_primal_solution_kernel(
-    const double *current_primal, double *reflected_primal, const double *dual_product,
-    const double *objective, const double *var_lb, const double *var_ub,
-    int n, double step_size);
+    const double *current_primal, double *reflected_primal,
+    const double *dual_product, const double *objective, const double *var_lb,
+    const double *var_ub, int n, double step_size);
 __global__ void compute_next_pdhg_primal_solution_major_kernel(
     const double *current_primal, double *pdhg_primal, double *reflected_primal,
     const double *dual_product, const double *objective, const double *var_lb,
     const double *var_ub, int n, double step_size, double *dual_slack);
 __global__ void compute_next_pdhg_dual_solution_kernel(
-    const double *current_dual, double *reflected_dual, const double *primal_product,
-    const double *const_lb, const double *const_ub, int n, double step_size);
+    const double *current_dual, double *reflected_dual,
+    const double *primal_product, const double *const_lb,
+    const double *const_ub, int n, double step_size);
 __global__ void compute_next_pdhg_dual_solution_major_kernel(
     const double *current_dual, double *pdhg_dual, double *reflected_dual,
-    const double *primal_product, const double *const_lb, const double *const_ub,
-    int n, double step_size);
-__global__ void halpern_update_kernel(
-    const double *initial_primal, double *current_primal, const double *reflected_primal,
-    const double *initial_dual, double *current_dual, const double *reflected_dual,
-    int n_vars, int n_cons, double weight, double reflection_coeff);
-__global__ void rescale_solution_kernel(
-    double *primal_solution, double *dual_solution, const double *variable_rescaling, const double *constraint_rescaling,
-    const double objective_vector_rescaling, const double constraint_bound_rescaling,
-    int n_vars, int n_cons);
+    const double *primal_product, const double *const_lb,
+    const double *const_ub, int n, double step_size);
+__global__ void
+halpern_update_kernel(const double *initial_primal, double *current_primal,
+                      const double *reflected_primal,
+                      const double *initial_dual, double *current_dual,
+                      const double *reflected_dual, int n_vars, int n_cons,
+                      double weight, double reflection_coeff);
+__global__ void rescale_solution_kernel(double *primal_solution,
+                                        double *dual_solution,
+                                        const double *variable_rescaling,
+                                        const double *constraint_rescaling,
+                                        const double objective_vector_rescaling,
+                                        const double constraint_bound_rescaling,
+                                        int n_vars, int n_cons);
 __global__ void compute_delta_solution_kernel(
-    const double *initial_primal, const double *pdhg_primal, double *delta_primal,
-    const double *initial_dual, const double *pdhg_dual, double *delta_dual,
-    int n_vars, int n_cons);
+    const double *initial_primal, const double *pdhg_primal,
+    double *delta_primal, const double *initial_dual, const double *pdhg_dual,
+    double *delta_dual, int n_vars, int n_cons);
 static void compute_next_pdhg_primal_solution(pdhg_solver_state_t *state);
 static void compute_next_pdhg_dual_solution(pdhg_solver_state_t *state);
-static void halpern_update(pdhg_solver_state_t *state, double reflection_coefficient);
+static void halpern_update(pdhg_solver_state_t *state,
+                           double reflection_coefficient);
 static void rescale_solution(pdhg_solver_state_t *state);
 static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state);
 static void perform_primal_restart(pdhg_solver_state_t *state);    
@@ -81,11 +89,13 @@ void primal_feas_polish_state_free(pdhg_solver_state_t *state);
 void dual_feas_polish_state_free(pdhg_solver_state_t *state);
 void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state);
 
-cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *original_problem)
+cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
+                           const lp_problem_t *original_problem)
 {
     print_initial_info(params, original_problem);
     rescale_info_t *rescale_info = rescale_problem(params, original_problem);
-    pdhg_solver_state_t *state = initialize_solver_state(original_problem, rescale_info);
+    pdhg_solver_state_t *state =
+        initialize_solver_state(original_problem, rescale_info);
 
     rescale_info_free(rescale_info);
     initialize_step_size_and_primal_weight(state, params);
@@ -93,15 +103,18 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     bool do_restart = false;
     while (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
-        if ((state->is_this_major_iteration || state->total_count == 0) || (state->total_count % get_print_frequency(state->total_count) == 0))
+        if ((state->is_this_major_iteration || state->total_count == 0) ||
+            (state->total_count % get_print_frequency(state->total_count) == 0))
         {
             compute_residual(state);
-            if (state->is_this_major_iteration && state->total_count < 3 * params->termination_evaluation_frequency)
+            if (state->is_this_major_iteration &&
+                state->total_count < 3 * params->termination_evaluation_frequency)
             {
                 compute_infeasibility_information(state);
             }
 
-            state->cumulative_time_sec = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+            state->cumulative_time_sec =
+                (double)(clock() - start_time) / CLOCKS_PER_SEC;
 
             check_termination_criteria(state, &params->termination_criteria);
             display_iteration_stats(state, params->verbose);
@@ -109,12 +122,16 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
         if ((state->is_this_major_iteration || state->total_count == 0))
         {
-            do_restart = should_do_adaptive_restart(state, &params->restart_params, params->termination_evaluation_frequency);
+            do_restart =
+                should_do_adaptive_restart(state, &params->restart_params,
+                                           params->termination_evaluation_frequency);
             if (do_restart)
                 perform_restart(state, params);
         }
 
-        state->is_this_major_iteration = ((state->total_count + 1) % params->termination_evaluation_frequency) == 0;
+        state->is_this_major_iteration =
+            ((state->total_count + 1) % params->termination_evaluation_frequency) ==
+            0;
 
         compute_next_pdhg_primal_solution(state);
         compute_next_pdhg_dual_solution(state);
@@ -542,7 +559,8 @@ static pdhg_solver_state_t *initialize_solver_state(
     const lp_problem_t *original_problem,
     const rescale_info_t *rescale_info)
 {
-    pdhg_solver_state_t *state = (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
 
     int n_vars = original_problem->num_variables;
     int n_cons = original_problem->num_constraints;
@@ -553,16 +571,20 @@ static pdhg_solver_state_t *initialize_solver_state(
     state->num_constraints = n_cons;
     state->objective_constant = original_problem->objective_constant;
 
-    state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
-    state->constraint_matrix_t = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
+    state->constraint_matrix =
+        (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
+    state->constraint_matrix_t =
+        (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
 
     state->constraint_matrix->num_rows = n_cons;
     state->constraint_matrix->num_cols = n_vars;
-    state->constraint_matrix->num_nonzeros = original_problem->constraint_matrix_num_nonzeros;
+    state->constraint_matrix->num_nonzeros =
+        original_problem->constraint_matrix_num_nonzeros;
 
     state->constraint_matrix_t->num_rows = n_vars;
     state->constraint_matrix_t->num_cols = n_cons;
-    state->constraint_matrix_t->num_nonzeros = original_problem->constraint_matrix_num_nonzeros;
+    state->constraint_matrix_t->num_nonzeros =
+        original_problem->constraint_matrix_num_nonzeros;
 
     state->termination_reason = TERMINATION_REASON_UNSPECIFIED;
 
@@ -572,44 +594,73 @@ static pdhg_solver_state_t *initialize_solver_state(
     CUDA_CHECK(cudaMalloc(&dest, bytes)); \
     CUDA_CHECK(cudaMemcpy(dest, src, bytes, cudaMemcpyHostToDevice));
 
-    ALLOC_AND_COPY(state->constraint_matrix->row_ptr, rescale_info->scaled_problem->constraint_matrix_row_pointers, (n_cons + 1) * sizeof(int));
-    ALLOC_AND_COPY(state->constraint_matrix->col_ind, rescale_info->scaled_problem->constraint_matrix_col_indices, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(int));
-    ALLOC_AND_COPY(state->constraint_matrix->val, rescale_info->scaled_problem->constraint_matrix_values, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(double));
+    ALLOC_AND_COPY(state->constraint_matrix->row_ptr,
+                   rescale_info->scaled_problem->constraint_matrix_row_pointers,
+                   (n_cons + 1) * sizeof(int));
+    ALLOC_AND_COPY(state->constraint_matrix->col_ind,
+                   rescale_info->scaled_problem->constraint_matrix_col_indices,
+                   rescale_info->scaled_problem->constraint_matrix_num_nonzeros *
+                       sizeof(int));
+    ALLOC_AND_COPY(state->constraint_matrix->val,
+                   rescale_info->scaled_problem->constraint_matrix_values,
+                   rescale_info->scaled_problem->constraint_matrix_num_nonzeros *
+                       sizeof(double));
 
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ptr, (n_vars + 1) * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->col_ind, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->val, rescale_info->scaled_problem->constraint_matrix_num_nonzeros * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ptr,
+                          (n_vars + 1) * sizeof(int)));
+    CUDA_CHECK(
+        cudaMalloc(&state->constraint_matrix_t->col_ind,
+                   rescale_info->scaled_problem->constraint_matrix_num_nonzeros *
+                       sizeof(int)));
+    CUDA_CHECK(
+        cudaMalloc(&state->constraint_matrix_t->val,
+                   rescale_info->scaled_problem->constraint_matrix_num_nonzeros *
+                       sizeof(double)));
 
     CUSPARSE_CHECK(cusparseCreate(&state->sparse_handle));
     CUBLAS_CHECK(cublasCreate(&state->blas_handle));
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle, CUBLAS_POINTER_MODE_HOST));
+    CUBLAS_CHECK(
+        cublasSetPointerMode(state->blas_handle, CUBLAS_POINTER_MODE_HOST));
 
     size_t buffer_size = 0;
     void *buffer = nullptr;
     CUSPARSE_CHECK(cusparseCsr2cscEx2_bufferSize(
-        state->sparse_handle, state->constraint_matrix->num_rows, state->constraint_matrix->num_cols, state->constraint_matrix->num_nonzeros,
-        state->constraint_matrix->val, state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind,
-        state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind,
-        CUDA_R_64F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
-        CUSPARSE_CSR2CSC_ALG_DEFAULT, &buffer_size));
+        state->sparse_handle, state->constraint_matrix->num_rows,
+        state->constraint_matrix->num_cols,
+        state->constraint_matrix->num_nonzeros, state->constraint_matrix->val,
+        state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind,
+        state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr,
+        state->constraint_matrix_t->col_ind, CUDA_R_64F, CUSPARSE_ACTION_NUMERIC,
+        CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_CSR2CSC_ALG_DEFAULT, &buffer_size));
     CUDA_CHECK(cudaMalloc(&buffer, buffer_size));
 
     CUSPARSE_CHECK(cusparseCsr2cscEx2(
-        state->sparse_handle, state->constraint_matrix->num_rows, state->constraint_matrix->num_cols, state->constraint_matrix->num_nonzeros,
-        state->constraint_matrix->val, state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind,
-        state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind,
-        CUDA_R_64F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
-        CUSPARSE_CSR2CSC_ALG_DEFAULT, buffer));
+        state->sparse_handle, state->constraint_matrix->num_rows,
+        state->constraint_matrix->num_cols,
+        state->constraint_matrix->num_nonzeros, state->constraint_matrix->val,
+        state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind,
+        state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr,
+        state->constraint_matrix_t->col_ind, CUDA_R_64F, CUSPARSE_ACTION_NUMERIC,
+        CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_CSR2CSC_ALG_DEFAULT, buffer));
 
     CUDA_CHECK(cudaFree(buffer));
 
-    ALLOC_AND_COPY(state->variable_lower_bound, rescale_info->scaled_problem->variable_lower_bound, var_bytes);
-    ALLOC_AND_COPY(state->variable_upper_bound, rescale_info->scaled_problem->variable_upper_bound, var_bytes);
-    ALLOC_AND_COPY(state->objective_vector, rescale_info->scaled_problem->objective_vector, var_bytes);
-    ALLOC_AND_COPY(state->constraint_lower_bound, rescale_info->scaled_problem->constraint_lower_bound, con_bytes);
-    ALLOC_AND_COPY(state->constraint_upper_bound, rescale_info->scaled_problem->constraint_upper_bound, con_bytes);
-    ALLOC_AND_COPY(state->constraint_rescaling, rescale_info->con_rescale, con_bytes);
-    ALLOC_AND_COPY(state->variable_rescaling, rescale_info->var_rescale, var_bytes);
+    ALLOC_AND_COPY(state->variable_lower_bound,
+                   rescale_info->scaled_problem->variable_lower_bound, var_bytes);
+    ALLOC_AND_COPY(state->variable_upper_bound,
+                   rescale_info->scaled_problem->variable_upper_bound, var_bytes);
+    ALLOC_AND_COPY(state->objective_vector,
+                   rescale_info->scaled_problem->objective_vector, var_bytes);
+    ALLOC_AND_COPY(state->constraint_lower_bound,
+                   rescale_info->scaled_problem->constraint_lower_bound,
+                   con_bytes);
+    ALLOC_AND_COPY(state->constraint_upper_bound,
+                   rescale_info->scaled_problem->constraint_upper_bound,
+                   con_bytes);
+    ALLOC_AND_COPY(state->constraint_rescaling, rescale_info->con_rescale,
+                   con_bytes);
+    ALLOC_AND_COPY(state->variable_rescaling, rescale_info->var_rescale,
+                   var_bytes);
 
     state->constraint_bound_rescaling = rescale_info->con_bound_rescale;
     state->objective_vector_rescaling = rescale_info->obj_vec_rescale;
@@ -636,33 +687,55 @@ static pdhg_solver_state_t *initialize_solver_state(
     ALLOC_ZERO(state->primal_residual, con_bytes);
     ALLOC_ZERO(state->delta_dual_solution, con_bytes);
 
-    if (original_problem->primal_start) {
+    if (original_problem->primal_start)
+    {
         double *rescaled = (double *)safe_malloc(var_bytes);
         for (int i = 0; i < n_vars; ++i)
-            rescaled[i] = original_problem->primal_start[i] * rescale_info->var_rescale[i] * rescale_info->con_bound_rescale;
-        CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, rescaled, var_bytes, cudaMemcpyHostToDevice));
+            rescaled[i] = original_problem->primal_start[i] *
+                          rescale_info->var_rescale[i] *
+                          rescale_info->con_bound_rescale;
+        CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, rescaled, var_bytes,
+                              cudaMemcpyHostToDevice));
         free(rescaled);
     }
-    if (original_problem->dual_start) {
+    if (original_problem->dual_start)
+    {
         double *rescaled = (double *)safe_malloc(con_bytes);
         for (int i = 0; i < n_cons; ++i)
-            rescaled[i] = original_problem->dual_start[i] * rescale_info->con_rescale[i] * rescale_info->obj_vec_rescale;
-        CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, rescaled, con_bytes, cudaMemcpyHostToDevice));
+            rescaled[i] = original_problem->dual_start[i] *
+                          rescale_info->con_rescale[i] *
+                          rescale_info->obj_vec_rescale;
+        CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, rescaled, con_bytes,
+                              cudaMemcpyHostToDevice));
         free(rescaled);
     }
 
     double *temp_host = (double *)safe_malloc(fmax(var_bytes, con_bytes));
     for (int i = 0; i < n_cons; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->constraint_lower_bound[i]) ? rescale_info->scaled_problem->constraint_lower_bound[i] : 0.0;
-    ALLOC_AND_COPY(state->constraint_lower_bound_finite_val, temp_host, con_bytes);
+        temp_host[i] =
+            isfinite(rescale_info->scaled_problem->constraint_lower_bound[i])
+                ? rescale_info->scaled_problem->constraint_lower_bound[i]
+                : 0.0;
+    ALLOC_AND_COPY(state->constraint_lower_bound_finite_val, temp_host,
+                   con_bytes);
     for (int i = 0; i < n_cons; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->constraint_upper_bound[i]) ? rescale_info->scaled_problem->constraint_upper_bound[i] : 0.0;
-    ALLOC_AND_COPY(state->constraint_upper_bound_finite_val, temp_host, con_bytes);
+        temp_host[i] =
+            isfinite(rescale_info->scaled_problem->constraint_upper_bound[i])
+                ? rescale_info->scaled_problem->constraint_upper_bound[i]
+                : 0.0;
+    ALLOC_AND_COPY(state->constraint_upper_bound_finite_val, temp_host,
+                   con_bytes);
     for (int i = 0; i < n_vars; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->variable_lower_bound[i]) ? rescale_info->scaled_problem->variable_lower_bound[i] : 0.0;
+        temp_host[i] =
+            isfinite(rescale_info->scaled_problem->variable_lower_bound[i])
+                ? rescale_info->scaled_problem->variable_lower_bound[i]
+                : 0.0;
     ALLOC_AND_COPY(state->variable_lower_bound_finite_val, temp_host, var_bytes);
     for (int i = 0; i < n_vars; ++i)
-        temp_host[i] = isfinite(rescale_info->scaled_problem->variable_upper_bound[i]) ? rescale_info->scaled_problem->variable_upper_bound[i] : 0.0;
+        temp_host[i] =
+            isfinite(rescale_info->scaled_problem->variable_upper_bound[i])
+                ? rescale_info->scaled_problem->variable_upper_bound[i]
+                : 0.0;
     ALLOC_AND_COPY(state->variable_upper_bound_finite_val, temp_host, var_bytes);
     free(temp_host);
 
@@ -670,7 +743,8 @@ static pdhg_solver_state_t *initialize_solver_state(
 
     for (int i = 0; i < n_vars; ++i)
     {
-        sum_of_squares += original_problem->objective_vector[i] * original_problem->objective_vector[i];
+        sum_of_squares += original_problem->objective_vector[i] *
+                          original_problem->objective_vector[i];
     }
     state->objective_vector_norm = sqrt(sum_of_squares);
 
@@ -693,9 +767,13 @@ static pdhg_solver_state_t *initialize_solver_state(
     }
 
     state->constraint_bound_norm = sqrt(sum_of_squares);
-    state->num_blocks_primal = (state->num_variables + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    state->num_blocks_dual = (state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    state->num_blocks_primal_dual = (state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    state->num_blocks_primal =
+        (state->num_variables + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    state->num_blocks_dual =
+        (state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    state->num_blocks_primal_dual =
+        (state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) /
+        THREADS_PER_BLOCK;
 
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
@@ -705,57 +783,92 @@ static pdhg_solver_state_t *initialize_solver_state(
     size_t primal_spmv_buffer_size;
     size_t dual_spmv_buffer_size;
 
-    CUSPARSE_CHECK(cusparseCreateCsr(&state->matA, state->num_constraints, state->num_variables, state->constraint_matrix->num_nonzeros, state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind, state->constraint_matrix->val, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateCsr(
+        &state->matA, state->num_constraints, state->num_variables,
+        state->constraint_matrix->num_nonzeros, state->constraint_matrix->row_ptr,
+        state->constraint_matrix->col_ind, state->constraint_matrix->val,
+        CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
+        CUDA_R_64F));
 
     CUDA_CHECK(cudaGetLastError());
 
-    CUSPARSE_CHECK(cusparseCreateCsr(&state->matAt, state->num_variables, state->num_constraints, state->constraint_matrix_t->num_nonzeros, state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind, state->constraint_matrix_t->val, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateCsr(
+        &state->matAt, state->num_variables, state->num_constraints,
+        state->constraint_matrix_t->num_nonzeros,
+        state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind,
+        state->constraint_matrix_t->val, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+        CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
     CUDA_CHECK(cudaGetLastError());
 
-    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_primal_sol, state->num_variables, state->pdhg_primal_solution, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_dual_sol, state->num_constraints, state->pdhg_dual_solution, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_primal_prod, state->num_constraints, state->primal_product, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_dual_prod, state->num_variables, state->dual_product, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseSpMV_bufferSize(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &primal_spmv_buffer_size));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_primal_sol,
+                                       state->num_variables,
+                                       state->pdhg_primal_solution, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_dual_sol,
+                                       state->num_constraints,
+                                       state->pdhg_dual_solution, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_primal_prod,
+                                       state->num_constraints,
+                                       state->primal_product, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_dual_prod,
+                                       state->num_variables, state->dual_product,
+                                       CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseSpMV_bufferSize(
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod,
+        CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &primal_spmv_buffer_size));
 
-    CUSPARSE_CHECK(cusparseSpMV_bufferSize(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &dual_spmv_buffer_size));
+    CUSPARSE_CHECK(cusparseSpMV_bufferSize(
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
+        CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &dual_spmv_buffer_size));
     CUDA_CHECK(cudaMalloc(&state->primal_spmv_buffer, primal_spmv_buffer_size));
-    CUSPARSE_CHECK(cusparseSpMV_preprocess(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                           &HOST_ONE, state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod,
-                                           CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
+    CUSPARSE_CHECK(cusparseSpMV_preprocess(
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod,
+        CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
 
     CUDA_CHECK(cudaMalloc(&state->dual_spmv_buffer, dual_spmv_buffer_size));
-    CUSPARSE_CHECK(cusparseSpMV_preprocess(state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                           &HOST_ONE, state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
-                                           CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
+    CUSPARSE_CHECK(cusparseSpMV_preprocess(
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
+        CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
-    CUDA_CHECK(cudaMalloc(&state->ones_primal_d, state->num_variables * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->ones_dual_d, state->num_constraints * sizeof(double)));
+    CUDA_CHECK(
+        cudaMalloc(&state->ones_primal_d, state->num_variables * sizeof(double)));
+    CUDA_CHECK(
+        cudaMalloc(&state->ones_dual_d, state->num_constraints * sizeof(double)));
 
-    double *ones_primal_h = (double *)safe_malloc(state->num_variables * sizeof(double));
+    double *ones_primal_h =
+        (double *)safe_malloc(state->num_variables * sizeof(double));
     for (int i = 0; i < state->num_variables; ++i)
         ones_primal_h[i] = 1.0;
-    CUDA_CHECK(cudaMemcpy(state->ones_primal_d, ones_primal_h, state->num_variables * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->ones_primal_d, ones_primal_h,
+                          state->num_variables * sizeof(double),
+                          cudaMemcpyHostToDevice));
     free(ones_primal_h);
 
-    double *ones_dual_h = (double *)safe_malloc(state->num_constraints * sizeof(double));
+    double *ones_dual_h =
+        (double *)safe_malloc(state->num_constraints * sizeof(double));
     for (int i = 0; i < state->num_constraints; ++i)
         ones_dual_h[i] = 1.0;
-    CUDA_CHECK(cudaMemcpy(state->ones_dual_d, ones_dual_h, state->num_constraints * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->ones_dual_d, ones_dual_h,
+                          state->num_constraints * sizeof(double),
+                          cudaMemcpyHostToDevice));
     free(ones_dual_h);
 
     return state;
 }
 
 __global__ void compute_next_pdhg_primal_solution_kernel(
-    const double *current_primal, double *reflected_primal, const double *dual_product,
-    const double *objective, const double *var_lb, const double *var_ub,
-    int n, double step_size)
+    const double *current_primal, double *reflected_primal,
+    const double *dual_product, const double *objective, const double *var_lb,
+    const double *var_ub, int n, double step_size)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
     {
-        double temp = current_primal[i] - step_size * (objective[i] - dual_product[i]);
+        double temp =
+            current_primal[i] - step_size * (objective[i] - dual_product[i]);
         double temp_proj = fmax(var_lb[i], fmin(temp, var_ub[i]));
         reflected_primal[i] = 2.0 * temp_proj - current_primal[i];
     }
@@ -769,7 +882,8 @@ __global__ void compute_next_pdhg_primal_solution_major_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
     {
-        double temp = current_primal[i] - step_size * (objective[i] - dual_product[i]);
+        double temp =
+            current_primal[i] - step_size * (objective[i] - dual_product[i]);
         pdhg_primal[i] = fmax(var_lb[i], fmin(temp, var_ub[i]));
         dual_slack[i] = (pdhg_primal[i] - temp) / step_size;
         reflected_primal[i] = 2.0 * pdhg_primal[i] - current_primal[i];
@@ -777,8 +891,9 @@ __global__ void compute_next_pdhg_primal_solution_major_kernel(
 }
 
 __global__ void compute_next_pdhg_dual_solution_kernel(
-    const double *current_dual, double *reflected_dual, const double *primal_product,
-    const double *const_lb, const double *const_ub, int n, double step_size)
+    const double *current_dual, double *reflected_dual,
+    const double *primal_product, const double *const_lb,
+    const double *const_ub, int n, double step_size)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
@@ -791,8 +906,8 @@ __global__ void compute_next_pdhg_dual_solution_kernel(
 
 __global__ void compute_next_pdhg_dual_solution_major_kernel(
     const double *current_dual, double *pdhg_dual, double *reflected_dual,
-    const double *primal_product, const double *const_lb, const double *const_ub,
-    int n, double step_size)
+    const double *primal_product, const double *const_lb,
+    const double *const_ub, int n, double step_size)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
@@ -804,46 +919,55 @@ __global__ void compute_next_pdhg_dual_solution_major_kernel(
     }
 }
 
-__global__ void halpern_update_kernel(
-    const double *initial_primal, double *current_primal, const double *reflected_primal,
-    const double *initial_dual, double *current_dual, const double *reflected_dual,
-    int n_vars, int n_cons, double weight, double reflection_coeff)
+__global__ void
+halpern_update_kernel(const double *initial_primal, double *current_primal,
+                      const double *reflected_primal,
+                      const double *initial_dual, double *current_dual,
+                      const double *reflected_dual, int n_vars, int n_cons,
+                      double weight, double reflection_coeff)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
     {
-        double reflected = reflection_coeff * reflected_primal[i] + (1.0 - reflection_coeff) * current_primal[i];
+        double reflected = reflection_coeff * reflected_primal[i] +
+                           (1.0 - reflection_coeff) * current_primal[i];
         current_primal[i] = weight * reflected + (1.0 - weight) * initial_primal[i];
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        double reflected = reflection_coeff * reflected_dual[idx] + (1.0 - reflection_coeff) * current_dual[idx];
+        double reflected = reflection_coeff * reflected_dual[idx] +
+                           (1.0 - reflection_coeff) * current_dual[idx];
         current_dual[idx] = weight * reflected + (1.0 - weight) * initial_dual[idx];
     }
 }
 
-__global__ void rescale_solution_kernel(
-    double *primal_solution, double *dual_solution, const double *variable_rescaling, const double *constraint_rescaling,
-    const double objective_vector_rescaling, const double constraint_bound_rescaling,
-    int n_vars, int n_cons)
+__global__ void rescale_solution_kernel(double *primal_solution,
+                                        double *dual_solution,
+                                        const double *variable_rescaling,
+                                        const double *constraint_rescaling,
+                                        const double objective_vector_rescaling,
+                                        const double constraint_bound_rescaling,
+                                        int n_vars, int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
     {
-        primal_solution[i] = primal_solution[i] / variable_rescaling[i] / constraint_bound_rescaling;
+        primal_solution[i] =
+            primal_solution[i] / variable_rescaling[i] / constraint_bound_rescaling;
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        dual_solution[idx] = dual_solution[idx] / constraint_rescaling[idx] / objective_vector_rescaling;
+        dual_solution[idx] = dual_solution[idx] / constraint_rescaling[idx] /
+                             objective_vector_rescaling;
     }
 }
 
 __global__ void compute_delta_solution_kernel(
-    const double *initial_primal, const double *pdhg_primal, double *delta_primal,
-    const double *initial_dual, const double *pdhg_dual, double *delta_dual,
-    int n_vars, int n_cons)
+    const double *initial_primal, const double *pdhg_primal,
+    double *delta_primal, const double *initial_dual, const double *pdhg_dual,
+    double *delta_dual, int n_vars, int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
@@ -881,66 +1005,86 @@ __global__ void compute_delta_dual_solution_kernel(
 
 static void compute_next_pdhg_primal_solution(pdhg_solver_state_t *state)
 {
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->current_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol,
+                                          state->current_dual_solution));
+    CUSPARSE_CHECK(
+        cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 
     CUSPARSE_CHECK(cusparseSpMV(
-        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE, state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
         CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
     double step = state->step_size / state->primal_weight;
 
-    if (state->is_this_major_iteration || ((state->total_count + 2) % get_print_frequency(state->total_count + 2)) == 0)
+    if (state->is_this_major_iteration ||
+        ((state->total_count + 2) %
+         get_print_frequency(state->total_count + 2)) == 0)
     {
-        compute_next_pdhg_primal_solution_major_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
-            state->current_primal_solution, state->pdhg_primal_solution, state->reflected_primal_solution,
-            state->dual_product, state->objective_vector, state->variable_lower_bound,
-            state->variable_upper_bound, state->num_variables, step, state->dual_slack);
+        compute_next_pdhg_primal_solution_major_kernel<<<state->num_blocks_primal,
+                                                         THREADS_PER_BLOCK>>>(
+            state->current_primal_solution, state->pdhg_primal_solution,
+            state->reflected_primal_solution, state->dual_product,
+            state->objective_vector, state->variable_lower_bound,
+            state->variable_upper_bound, state->num_variables, step,
+            state->dual_slack);
     }
     else
     {
-        compute_next_pdhg_primal_solution_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
-            state->current_primal_solution, state->reflected_primal_solution, state->dual_product,
-            state->objective_vector, state->variable_lower_bound, state->variable_upper_bound,
+        compute_next_pdhg_primal_solution_kernel<<<state->num_blocks_primal,
+                                                   THREADS_PER_BLOCK>>>(
+            state->current_primal_solution, state->reflected_primal_solution,
+            state->dual_product, state->objective_vector,
+            state->variable_lower_bound, state->variable_upper_bound,
             state->num_variables, step);
     }
 }
 
 static void compute_next_pdhg_dual_solution(pdhg_solver_state_t *state)
 {
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->reflected_primal_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol,
+                                          state->reflected_primal_solution));
+    CUSPARSE_CHECK(
+        cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
 
     CUSPARSE_CHECK(cusparseSpMV(
-        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE, state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod,
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matA, state->vec_primal_sol, &HOST_ZERO, state->vec_primal_prod,
         CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
 
     double step = state->step_size * state->primal_weight;
 
-    if (state->is_this_major_iteration || ((state->total_count + 2) % get_print_frequency(state->total_count + 2)) == 0)
+    if (state->is_this_major_iteration ||
+        ((state->total_count + 2) %
+         get_print_frequency(state->total_count + 2)) == 0)
     {
-        compute_next_pdhg_dual_solution_major_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
-            state->current_dual_solution, state->pdhg_dual_solution, state->reflected_dual_solution,
-            state->primal_product, state->constraint_lower_bound, state->constraint_upper_bound,
+        compute_next_pdhg_dual_solution_major_kernel<<<state->num_blocks_dual,
+                                                       THREADS_PER_BLOCK>>>(
+            state->current_dual_solution, state->pdhg_dual_solution,
+            state->reflected_dual_solution, state->primal_product,
+            state->constraint_lower_bound, state->constraint_upper_bound,
             state->num_constraints, step);
     }
     else
     {
-        compute_next_pdhg_dual_solution_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
-            state->current_dual_solution, state->reflected_dual_solution, state->primal_product,
-            state->constraint_lower_bound, state->constraint_upper_bound, state->num_constraints, step);
+        compute_next_pdhg_dual_solution_kernel<<<state->num_blocks_dual,
+                                                 THREADS_PER_BLOCK>>>(
+            state->current_dual_solution, state->reflected_dual_solution,
+            state->primal_product, state->constraint_lower_bound,
+            state->constraint_upper_bound, state->num_constraints, step);
     }
 }
 
-static void halpern_update(pdhg_solver_state_t *state, double reflection_coefficient)
+static void halpern_update(pdhg_solver_state_t *state,
+                           double reflection_coefficient)
 {
     double weight = (double)(state->inner_count + 1) / (state->inner_count + 2);
     halpern_update_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK>>>(
-        state->initial_primal_solution, state->current_primal_solution, state->reflected_primal_solution,
-        state->initial_dual_solution, state->current_dual_solution, state->reflected_dual_solution,
-        state->num_variables, state->num_constraints, weight, reflection_coefficient);
+        state->initial_primal_solution, state->current_primal_solution,
+        state->reflected_primal_solution, state->initial_dual_solution,
+        state->current_dual_solution, state->reflected_dual_solution,
+        state->num_variables, state->num_constraints, weight,
+        reflection_coefficient);
 }
 
 static void rescale_solution(pdhg_solver_state_t *state)
@@ -952,28 +1096,38 @@ static void rescale_solution(pdhg_solver_state_t *state)
         state->num_variables, state->num_constraints);
 }
 
-static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
+static void perform_restart(pdhg_solver_state_t *state,
+                            const pdhg_parameters_t *params)
 {
-    compute_delta_solution_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK>>>(
-        state->initial_primal_solution, state->pdhg_primal_solution, state->delta_primal_solution,
-        state->initial_dual_solution, state->pdhg_dual_solution, state->delta_dual_solution,
+    compute_delta_solution_kernel<<<state->num_blocks_primal_dual,
+                                    THREADS_PER_BLOCK>>>(
+        state->initial_primal_solution, state->pdhg_primal_solution,
+        state->delta_primal_solution, state->initial_dual_solution,
+        state->pdhg_dual_solution, state->delta_dual_solution,
         state->num_variables, state->num_constraints);
 
     double primal_dist, dual_dist;
-    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_variables, state->delta_primal_solution, 1, &primal_dist));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_constraints, state->delta_dual_solution, 1, &dual_dist));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_variables,
+                                   state->delta_primal_solution, 1,
+                                   &primal_dist));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_constraints,
+                                   state->delta_dual_solution, 1, &dual_dist));
 
-    double ratio_infeas = state->relative_dual_residual / state->relative_primal_residual;
+    double ratio_infeas =
+        state->relative_dual_residual / state->relative_primal_residual;
 
-    if (primal_dist > 1e-16 && dual_dist > 1e-16 && primal_dist < 1e12 && dual_dist < 1e12 && ratio_infeas > 1e-8 && ratio_infeas < 1e8)
+    if (primal_dist > 1e-16 && dual_dist > 1e-16 && primal_dist < 1e12 &&
+        dual_dist < 1e12 && ratio_infeas > 1e-8 && ratio_infeas < 1e8)
     {
-        double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
+        double error =
+            log(dual_dist) - log(primal_dist) - log(state->primal_weight);
         state->primal_weight_error_sum *= params->restart_params.i_smooth;
         state->primal_weight_error_sum += error;
         double delta_error = error - state->primal_weight_last_error;
-        state->primal_weight *= exp(params->restart_params.k_p * error +
-                                    params->restart_params.k_i * state->primal_weight_error_sum +
-                                    params->restart_params.k_d * delta_error);
+        state->primal_weight *=
+            exp(params->restart_params.k_p * error +
+                params->restart_params.k_i * state->primal_weight_error_sum +
+                params->restart_params.k_d * delta_error);
         state->primal_weight_last_error = error;
     }
     else
@@ -983,17 +1137,26 @@ static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t 
         state->primal_weight_last_error = 0.0;
     }
 
-    double primal_dual_residual_gap = abs(log10(state->relative_dual_residual / state->relative_primal_residual));
+    double primal_dual_residual_gap = abs(
+        log10(state->relative_dual_residual / state->relative_primal_residual));
     if (primal_dual_residual_gap < state->best_primal_dual_residual_gap)
     {
         state->best_primal_dual_residual_gap = primal_dual_residual_gap;
         state->best_primal_weight = state->primal_weight;
     }
 
-    CUDA_CHECK(cudaMemcpy(state->initial_primal_solution, state->pdhg_primal_solution, state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_primal_solution, state->pdhg_primal_solution, state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, state->pdhg_dual_solution, state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_dual_solution, state->pdhg_dual_solution, state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(
+        state->initial_primal_solution, state->pdhg_primal_solution,
+        state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(
+        state->current_primal_solution, state->pdhg_primal_solution,
+        state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->initial_dual_solution, state->pdhg_dual_solution,
+                          state->num_constraints * sizeof(double),
+                          cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->current_dual_solution, state->pdhg_dual_solution,
+                          state->num_constraints * sizeof(double),
+                          cudaMemcpyDeviceToDevice));
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
@@ -1017,7 +1180,9 @@ static void perform_dual_restart(pdhg_solver_state_t *state)
 
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
-    double max_sv = estimate_maximum_singular_value(state->sparse_handle, state->blas_handle, state->constraint_matrix, state->constraint_matrix_t, 5000, 1e-4);
+    double max_sv = estimate_maximum_singular_value(
+        state->sparse_handle, state->blas_handle, state->constraint_matrix,
+        state->constraint_matrix_t, 5000, 1e-4);
     state->step_size = 0.998 / max_sv;
 
     if (params->bound_objective_rescaling)
@@ -1026,29 +1191,29 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     }
     else
     {
-        state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
+        state->primal_weight = (state->objective_vector_norm + 1.0) /
+                               (state->constraint_bound_norm + 1.0);
     }
     state->best_primal_weight = state->primal_weight;
 }
 
 static void compute_fixed_point_error(pdhg_solver_state_t *state)
 {
-    compute_delta_solution_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK>>>(
-        state->current_primal_solution,
-        state->reflected_primal_solution,
-        state->delta_primal_solution,
-        state->current_dual_solution,
-        state->reflected_dual_solution,
-        state->delta_dual_solution,
-        state->num_variables,
-        state->num_constraints);
+    compute_delta_solution_kernel<<<state->num_blocks_primal_dual,
+                                    THREADS_PER_BLOCK>>>(
+        state->current_primal_solution, state->reflected_primal_solution,
+        state->delta_primal_solution, state->current_dual_solution,
+        state->reflected_dual_solution, state->delta_dual_solution,
+        state->num_variables, state->num_constraints);
 
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->delta_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
+    CUSPARSE_CHECK(
+        cusparseDnVecSetValues(state->vec_dual_sol, state->delta_dual_solution));
+    CUSPARSE_CHECK(
+        cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 
     CUSPARSE_CHECK(cusparseSpMV(
-        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE, state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
+        state->sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE,
+        state->matAt, state->vec_dual_sol, &HOST_ZERO, state->vec_dual_prod,
         CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
     double interaction, movement;
@@ -1057,19 +1222,17 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
     double dual_norm = 0.0;
     double cross_term = 0.0;
 
-    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle,
-                                   state->num_constraints,
-                                   state->delta_dual_solution,
-                                   1,
-                                   &dual_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle,
-                                   state->num_variables,
-                                   state->delta_primal_solution,
-                                   1,
+    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_constraints,
+                                   state->delta_dual_solution, 1, &dual_norm));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle, state->num_variables,
+                                   state->delta_primal_solution, 1,
                                    &primal_norm));
-    movement = primal_norm * primal_norm * state->primal_weight + dual_norm * dual_norm / state->primal_weight;
+    movement = primal_norm * primal_norm * state->primal_weight +
+               dual_norm * dual_norm / state->primal_weight;
 
-    CUBLAS_CHECK(cublasDdot(state->blas_handle, state->num_variables, state->dual_product, 1, state->delta_primal_solution, 1, &cross_term));
+    CUBLAS_CHECK(cublasDdot(state->blas_handle, state->num_variables,
+                            state->dual_product, 1, state->delta_primal_solution,
+                            1, &cross_term));
     interaction = 2 * state->step_size * cross_term;
 
     state->fixed_point_error = sqrt(movement + interaction);
@@ -1158,24 +1321,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
     free(state);
 }
 
-void lp_problem_free(lp_problem_t *prob)
-{
-    if (!prob)
-        return;
-    free(prob->constraint_matrix_row_pointers);
-    free(prob->constraint_matrix_col_indices);
-    free(prob->constraint_matrix_values);
-    free(prob->variable_lower_bound);
-    free(prob->variable_upper_bound);
-    free(prob->objective_vector);
-    free(prob->constraint_lower_bound);
-    free(prob->constraint_upper_bound);
-    free(prob->primal_start);
-    free(prob->dual_start);
-    memset(prob, 0, sizeof(*prob));
-    free(prob);
-}
-
 void rescale_info_free(rescale_info_t *info)
 {
     if (info == NULL)
@@ -1190,29 +1335,24 @@ void rescale_info_free(rescale_info_t *info)
     free(info);
 }
 
-void cupdlpx_result_free(cupdlpx_result_t *results)
-{
-    if (results == NULL)
-    {
-        return;
-    }
-
-    free(results->primal_solution);
-    free(results->dual_solution);
-    free(results);
-}
-
 static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state)
 {
-    cupdlpx_result_t *results = (cupdlpx_result_t *)safe_calloc(1, sizeof(cupdlpx_result_t));
+    cupdlpx_result_t *results =
+        (cupdlpx_result_t *)safe_calloc(1, sizeof(cupdlpx_result_t));
 
     rescale_solution(state);
 
-    results->primal_solution = (double *)safe_malloc(state->num_variables * sizeof(double));
-    results->dual_solution = (double *)safe_malloc(state->num_constraints * sizeof(double));
+    results->primal_solution =
+        (double *)safe_malloc(state->num_variables * sizeof(double));
+    results->dual_solution =
+        (double *)safe_malloc(state->num_constraints * sizeof(double));
 
-    CUDA_CHECK(cudaMemcpy(results->primal_solution, state->pdhg_primal_solution, state->num_variables * sizeof(double), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(results->dual_solution, state->pdhg_dual_solution, state->num_constraints * sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(results->primal_solution, state->pdhg_primal_solution,
+                          state->num_variables * sizeof(double),
+                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(results->dual_solution, state->pdhg_dual_solution,
+                          state->num_constraints * sizeof(double),
+                          cudaMemcpyDeviceToHost));
 
     results->num_variables = state->num_variables;
     results->num_constraints = state->num_constraints;

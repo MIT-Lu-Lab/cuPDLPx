@@ -22,10 +22,12 @@ Follow these steps to build the solver and verify its installation.
 - A C toolchain (gcc) and the NVIDIA CUDA Compiler (nvcc).
 
 ### Build from Source
-Clone the repository and compile the project using `make`.
+Clone the repository and compile the project using `CMake`.
 ```bash
-make clean
-make build
+git clone git@github.com:MIT-Lu-Lab/cuPDLPx.git
+cd cuPDLPx
+cmake -B build
+cmake --build build --clean-first
 ```
 This will create the solver binary at `./build/cupdlpx`.
 
@@ -77,7 +79,7 @@ The solver generates three text files in the specified <output_directory>. The f
 
 ### Python Interface
 
-In addition to the command-line and C APIs, cuPDLPx provides a Python interface (`cupdlpx`)  
+In addition to the command-line, cuPDLPx provides a Python interface (`cupdlpx`)  
 for building and solving LPs directly with NumPy and SciPy.  
 
 - High-level, Pythonic API similar to commercial solvers.  
@@ -102,7 +104,7 @@ See the [cupdlpx guide](https://github.com/MIT-Lu-Lab/cuPDLPx/tree/main/python/R
 
 ### C Interface
 
-Besides the command-line interface, cuPDLPx also provides a C API (interface.c) for directly solving LPs in memory. This is useful when integrating cuPDLPx into other C/C++ projects or when generating problems programmatically.
+Besides the command-line and Python interfaces, cuPDLPx also provides a C API for directly solving LPs in memory. This is useful when integrating cuPDLPx into other C/C++ projects or when generating problems programmatically.
 
 #### Functions and Parameters
 
@@ -146,7 +148,7 @@ After the normal PDHG solve you can ask cuPDLPx to run an extra feasibility-poli
 
 #### Example: Solving a Small LP
 ```c
-#include "cupdlpx/interface.h"
+#include "cupdlpx.h"
 #include <math.h>
 #include <stdio.h>
 

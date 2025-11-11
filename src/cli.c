@@ -14,17 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include "cupdlpx.h"
+#include "mps_parser.h"
+#include "solver.h"
+#include "utils.h"
+#include <getopt.h>
+#include <libgen.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <getopt.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <libgen.h>
-#include "mps_parser.h"
-#include "preconditioner.h"
-#include "struct.h"
-#include "solver.h"
 
 const char *termination_reason_tToString(termination_reason_t reason)
 {
@@ -46,9 +46,11 @@ const char *termination_reason_tToString(termination_reason_t reason)
     }
 }
 
-char *get_output_path(const char *output_dir, const char *instance_name, const char *suffix)
+char *get_output_path(const char *output_dir, const char *instance_name,
+                      const char *suffix)
 {
-    size_t path_len = strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
+    size_t path_len =
+        strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
     char *full_path = safe_malloc(path_len * sizeof(char));
     snprintf(full_path, path_len, "%s/%s%s", output_dir, instance_name, suffix);
     return full_path;
@@ -101,7 +103,8 @@ void save_solution(const double *data, int size, const char *output_dir,
     free(file_path);
 }
 
-void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir, const char *instance_name)
+void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
+                         const char *instance_name)
 {
     char *file_path = get_output_path(output_dir, instance_name, "_summary.txt");
     if (file_path == NULL)
@@ -116,13 +119,17 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
         free(file_path);
         return;
     }
-    fprintf(outfile, "Termination Reason: %s\n", termination_reason_tToString(result->termination_reason));
+    fprintf(outfile, "Termination Reason: %s\n",
+            termination_reason_tToString(result->termination_reason));
     fprintf(outfile, "Runtime (sec): %e\n", result->cumulative_time_sec);
     fprintf(outfile, "Iterations Count: %d\n", result->total_count);
-    fprintf(outfile, "Primal Objective Value: %e\n", result->primal_objective_value);
+    fprintf(outfile, "Primal Objective Value: %e\n",
+            result->primal_objective_value);
     fprintf(outfile, "Dual Objective Value: %e\n", result->dual_objective_value);
-    fprintf(outfile, "Relative Primal Residual: %e\n", result->relative_primal_residual);
-    fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
+    fprintf(outfile, "Relative Primal Residual: %e\n",
+            result->relative_primal_residual);
+    fprintf(outfile, "Relative Dual Residual: %e\n",
+            result->relative_dual_residual);
     fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
     fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
     if(result->feasibility_polishing_time > 0.0){
@@ -138,11 +145,15 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "Usage: %s [OPTIONS] <mps_file> <output_dir>\n\n", prog_name);
 
     fprintf(stderr, "Arguments:\n");
-    fprintf(stderr, "  <mps_file>               Path to the input problem in MPS format (.mps or .mps.gz).\n");
-    fprintf(stderr, "  <output_dir>             Directory where output files will be saved. It will contain:\n");
+    fprintf(stderr, "  <mps_file>               Path to the input problem in MPS "
+                    "format (.mps or .mps.gz).\n");
+    fprintf(stderr, "  <output_dir>             Directory where output files "
+                    "will be saved. It will contain:\n");
     fprintf(stderr, "                             - <basename>_summary.txt\n");
-    fprintf(stderr, "                             - <basename>_primal_solution.txt\n");
-    fprintf(stderr, "                             - <basename>_dual_solution.txt\n\n");
+    fprintf(stderr,
+            "                             - <basename>_primal_solution.txt\n");
+    fprintf(stderr,
+            "                             - <basename>_dual_solution.txt\n\n");
 
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "  -h, --help                          Display this help message.\n");
@@ -169,7 +180,7 @@ int main(int argc, char *argv[])
         {"eps_opt", required_argument, 0, 1003},
         {"eps_feas", required_argument, 0, 1004},
         {"eps_infeas_detect", required_argument, 0, 1005},
-        {"eps_feas_polish_relative", required_argument, 0, 1006},
+        {"eps_feas_polish", required_argument, 0, 1006},
         {"feasibility_polishing", no_argument, 0, 'f'},
         {0, 0, 0, 0}};
 
@@ -212,7 +223,9 @@ int main(int argc, char *argv[])
 
     if (argc - optind != 2)
     {
-        fprintf(stderr, "Error: You must specify an input file and an output directory.\n\n");
+        fprintf(
+            stderr,
+            "Error: You must specify an input file and an output directory.\n\n");
         print_usage(argv[0]);
         return 1;
     }

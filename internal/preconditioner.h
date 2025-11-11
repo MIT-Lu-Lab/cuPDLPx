@@ -16,6 +16,17 @@ limitations under the License.
 
 #pragma once
 
-#include "struct.h"
+#include "internal_types.h"
 
-lp_problem_t *read_mps_file(const char *filename);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    rescale_info_t *rescale_problem(
+        const pdhg_parameters_t *params,
+        const lp_problem_t *original_problem);
+
+#ifdef __cplusplus
+}
+#endif

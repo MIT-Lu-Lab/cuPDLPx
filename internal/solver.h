@@ -16,16 +16,18 @@ limitations under the License.
 
 #pragma once
 
-#include "struct.h" 
+#include "cupdlpx_types.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-    rescale_info_t *rescale_problem(
+    cupdlpx_result_t *optimize(
         const pdhg_parameters_t *params,
         const lp_problem_t *original_problem);
+
+    void set_default_parameters(pdhg_parameters_t *params);
 
 #ifdef __cplusplus
 }

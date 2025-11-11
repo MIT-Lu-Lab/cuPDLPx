@@ -1,7 +1,7 @@
 #!/bin/bash
 # cd ..
-make clean
-make build
+cmake -B build
+cmake --build build --clean-first
 
 # test
 wget -P test/ https://miplib.zib.de/WebData/instances/2club200v15p5scn.mps.gz

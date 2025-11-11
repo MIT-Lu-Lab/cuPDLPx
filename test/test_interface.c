@@ -14,20 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "cupdlpx/interface.h"
+#include "cupdlpx.h"
 #include <stdio.h>
 #include <math.h> 
-
-static const char* term_to_str(termination_reason_t r) {
-    switch (r) {
-        case TERMINATION_REASON_OPTIMAL:           return "OPTIMAL";
-        case TERMINATION_REASON_PRIMAL_INFEASIBLE: return "PRIMAL_INFEASIBLE";
-        case TERMINATION_REASON_DUAL_INFEASIBLE:   return "DUAL_INFEASIBLE";
-        case TERMINATION_REASON_TIME_LIMIT:        return "TIME_LIMIT";
-        case TERMINATION_REASON_ITERATION_LIMIT:   return "ITERATION_LIMIT";
-        default:                                   return "UNSPECIFIED";
-    }
-}
 
 static void print_vec(const char* name, const double* v, int n) {
     printf("%s:", name);
@@ -90,8 +79,8 @@ static void test_warm_start(const char* tag,
     }
 
     // Allocate and set initial solutions (e.g., zeros)
-    double* primal = (double*)safe_malloc(n * sizeof(double));
-    double* dual   = (double*)safe_malloc(m * sizeof(double));
+    double* primal = (double*)malloc(n * sizeof(double));
+    double* dual   = (double*)malloc(m * sizeof(double));
     for (int i = 0; i < n; ++i) primal[i] = 1.0;
     for (int i = 0; i < m; ++i) dual[i] = 1.0;
 

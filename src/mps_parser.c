@@ -15,15 +15,15 @@ limitations under the License.
 */
 
 #include "mps_parser.h"
+#include "cupdlpx.h"
 #include "utils.h"
-#include "solver.h"
-#include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
-#include <zlib.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+#include <zlib.h>
 
 #define READER_BUFFER_SIZE (4 * 1024 * 1024)
 
@@ -75,7 +75,8 @@ static void namemap_resize(NameMap *map)
         {
             NameNode *next = current->next;
 
-            unsigned long h = hash_string(current->name) % (unsigned long)new_num_buckets;
+            unsigned long h =
+                hash_string(current->name) % (unsigned long)new_num_buckets;
 
             current->next = map->buckets[h];
             map->buckets[h] = current;
@@ -173,7 +174,8 @@ static FastLineReader *fast_reader_open(const char *filename)
 
     reader->buffer = safe_malloc(READER_BUFFER_SIZE);
 
-    if (strlen(filename) > 3 && strcmp(filename + strlen(filename) - 3, ".gz") == 0)
+    if (strlen(filename) > 3 &&
+        strcmp(filename + strlen(filename) - 3, ".gz") == 0)
     {
         reader->is_gz = true;
         reader->handle.gz_f = gzopen(filename, "rb");
@@ -220,7 +222,8 @@ static void fast_reader_close(FastLineReader *reader)
     free(reader);
 }
 
-static char *fast_reader_gets(FastLineReader *reader, char *line_buf, int line_buf_size)
+static char *fast_reader_gets(FastLineReader *reader, char *line_buf,
+                              int line_buf_size)
 {
     int len = 0;
 
@@ -231,7 +234,8 @@ static char *fast_reader_gets(FastLineReader *reader, char *line_buf, int line_b
         {
             if (reader->is_gz)
             {
-                int bytes_read = gzread(reader->handle.gz_f, reader->buffer, READER_BUFFER_SIZE);
+                int bytes_read =
+                    gzread(reader->handle.gz_f, reader->buffer, READER_BUFFER_SIZE);
                 if (bytes_read <= 0)
                 {
 
@@ -241,7 +245,8 @@ static char *fast_reader_gets(FastLineReader *reader, char *line_buf, int line_b
             }
             else
             {
-                size_t bytes_read = fread(reader->buffer, 1, READER_BUFFER_SIZE, reader->handle.f);
+                size_t bytes_read =
+                    fread(reader->buffer, 1, READER_BUFFER_SIZE, reader->handle.f);
                 if (bytes_read <= 0)
                 {
                     return (len > 0) ? line_buf : NULL;
@@ -251,7 +256,8 @@ static char *fast_reader_gets(FastLineReader *reader, char *line_buf, int line_b
             reader->current_pos = reader->buffer;
         }
 
-        char *newline_pos = (char *)memchr(reader->current_pos, '\n', reader->end_pos - reader->current_pos);
+        char *newline_pos = (char *)memchr(reader->current_pos, '\n',
+                                           reader->end_pos - reader->current_pos);
 
         int bytes_to_copy;
         bool line_complete = (newline_pos != NULL);
@@ -336,9 +342,12 @@ static int add_coo_entry(CooMatrix *coo, int row, int col, double value)
     if (coo->nnz >= coo->capacity)
     {
         size_t new_capacity = (coo->capacity == 0) ? 1024 : coo->capacity * 2;
-        coo->row_indices = (int *)safe_realloc(coo->row_indices, new_capacity * sizeof(int));
-        coo->col_indices = (int *)safe_realloc(coo->col_indices, new_capacity * sizeof(int));
-        coo->values = (double *)safe_realloc(coo->values, new_capacity * sizeof(double));
+        coo->row_indices =
+            (int *)safe_realloc(coo->row_indices, new_capacity * sizeof(int));
+        coo->col_indices =
+            (int *)safe_realloc(coo->col_indices, new_capacity * sizeof(int));
+        coo->values =
+            (double *)safe_realloc(coo->values, new_capacity * sizeof(double));
         coo->capacity = new_capacity;
     }
     coo->row_indices[coo->nnz] = row;
@@ -362,9 +371,12 @@ static bool ensure_column_capacity(MpsParserState *state)
         return false;
     }
 
-    state->objective_coeffs = (double *)safe_realloc(state->objective_coeffs, new_cap * sizeof(double));
-    state->var_lower_bounds = (double *)safe_realloc(state->var_lower_bounds, new_cap * sizeof(double));
-    state->var_upper_bounds = (double *)safe_realloc(state->var_upper_bounds, new_cap * sizeof(double));
+    state->objective_coeffs =
+        (double *)safe_realloc(state->objective_coeffs, new_cap * sizeof(double));
+    state->var_lower_bounds =
+        (double *)safe_realloc(state->var_lower_bounds, new_cap * sizeof(double));
+    state->var_upper_bounds =
+        (double *)safe_realloc(state->var_upper_bounds, new_cap * sizeof(double));
 
     for (size_t i = state->col_capacity; i < new_cap; ++i)
     {
@@ -379,12 +391,18 @@ static bool ensure_column_capacity(MpsParserState *state)
 
 static void free_parser_state(MpsParserState *state);
 static int finalize_rows(MpsParserState *state);
-static int parse_rows_section(MpsParserState *state, char **tokens, int n_tokens);
-static int parse_columns_section(MpsParserState *state, char **tokens, int n_tokens);
-static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens);
-static int parse_ranges_section(MpsParserState *state, char **tokens, int n_tokens);
-static int parse_bounds_section(MpsParserState *state, char **tokens, int n_tokens);
-static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo, size_t num_constraints);
+static int parse_rows_section(MpsParserState *state, char **tokens,
+                              int n_tokens);
+static int parse_columns_section(MpsParserState *state, char **tokens,
+                                 int n_tokens);
+static int parse_rhs_section(MpsParserState *state, char **tokens,
+                             int n_tokens);
+static int parse_ranges_section(MpsParserState *state, char **tokens,
+                                int n_tokens);
+static int parse_bounds_section(MpsParserState *state, char **tokens,
+                                int n_tokens);
+static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo,
+                          size_t num_constraints);
 
 typedef enum
 {
@@ -454,7 +472,8 @@ lp_problem_t *read_mps_file(const char *filename)
                 next_section = SEC_ENDATA;
             }
 
-            if (current_section == SEC_ROWS && next_section != SEC_ROWS && !rows_finalized)
+            if (current_section == SEC_ROWS && next_section != SEC_ROWS &&
+                !rows_finalized)
             {
                 if (finalize_rows(&state) != 0)
                     state.error_flag = 1;
@@ -470,7 +489,8 @@ lp_problem_t *read_mps_file(const char *filename)
         switch (current_section)
         {
         case SEC_OBJSENSE:
-            if (n_tokens > 0 && (strcmp(tokens[0], "MAX") == 0 || strcmp(tokens[0], "MAXIMIZE") == 0))
+            if (n_tokens > 0 && (strcmp(tokens[0], "MAX") == 0 ||
+                                 strcmp(tokens[0], "MAXIMIZE") == 0))
             {
                 state.is_maximize = true;
             }
@@ -515,7 +535,8 @@ lp_problem_t *read_mps_file(const char *filename)
     prob->num_variables = state.col_map.size;
     prob->num_constraints = state.row_map.size;
     prob->constraint_matrix_num_nonzeros = state.coo_matrix.nnz;
-    prob->objective_constant = state.is_maximize ? -state.objective_constant : state.objective_constant;
+    prob->objective_constant =
+        state.is_maximize ? -state.objective_constant : state.objective_constant;
 
     prob->objective_vector = state.objective_coeffs;
     prob->variable_lower_bound = state.var_lower_bounds;
@@ -552,15 +573,20 @@ lp_problem_t *read_mps_file(const char *filename)
     return prob;
 }
 
-static int parse_rows_section(MpsParserState *state, char **tokens, int n_tokens)
+static int parse_rows_section(MpsParserState *state, char **tokens,
+                              int n_tokens)
 {
     if (n_tokens < 2)
         return 0;
 
     if (state->num_buffered_rows >= state->buffered_rows_capacity)
     {
-        state->buffered_rows_capacity = (state->buffered_rows_capacity == 0) ? 64 : state->buffered_rows_capacity * 2;
-        state->buffered_rows = (BufferedRow *)safe_realloc(state->buffered_rows, state->buffered_rows_capacity * sizeof(BufferedRow));
+        state->buffered_rows_capacity = (state->buffered_rows_capacity == 0)
+                                            ? 64
+                                            : state->buffered_rows_capacity * 2;
+        state->buffered_rows = (BufferedRow *)safe_realloc(
+            state->buffered_rows,
+            state->buffered_rows_capacity * sizeof(BufferedRow));
     }
 
     BufferedRow *new_row = &state->buffered_rows[state->num_buffered_rows];
@@ -609,8 +635,11 @@ static int finalize_rows(MpsParserState *state)
             size_t current_size = state->row_map.size;
             if (current_size >= state->constraint_capacity)
             {
-                state->constraint_capacity = (state->constraint_capacity == 0) ? 64 : state->constraint_capacity * 2;
-                state->constraint_types = (char *)safe_realloc(state->constraint_types, state->constraint_capacity * sizeof(char));
+                state->constraint_capacity = (state->constraint_capacity == 0)
+                                                 ? 64
+                                                 : state->constraint_capacity * 2;
+                state->constraint_types = (char *)safe_realloc(
+                    state->constraint_types, state->constraint_capacity * sizeof(char));
             }
             namemap_put(&state->row_map, state->buffered_rows[i].name);
             state->constraint_types[current_size] = type;
@@ -619,8 +648,10 @@ static int finalize_rows(MpsParserState *state)
     size_t num_constraints = state->row_map.size;
     if (num_constraints > 0)
     {
-        state->constraint_lower_bounds = safe_malloc(num_constraints * sizeof(double));
-        state->constraint_upper_bounds = safe_malloc(num_constraints * sizeof(double));
+        state->constraint_lower_bounds =
+            safe_malloc(num_constraints * sizeof(double));
+        state->constraint_upper_bounds =
+            safe_malloc(num_constraints * sizeof(double));
 
         for (size_t i = 0; i < num_constraints; ++i)
         {
@@ -645,7 +676,8 @@ static int finalize_rows(MpsParserState *state)
     return 0;
 }
 
-static int parse_columns_section(MpsParserState *state, char **tokens, int n_tokens)
+static int parse_columns_section(MpsParserState *state, char **tokens,
+                                 int n_tokens)
 {
     if (n_tokens < 2)
         return 0;
@@ -662,32 +694,38 @@ static int parse_columns_section(MpsParserState *state, char **tokens, int n_tok
     {
         free(state->current_col_name);
         state->current_col_name = strdup(tokens[0]);
-        if (!state->current_col_name) return -1;
-        
+        if (!state->current_col_name)
+            return -1;
+
         col_name = state->current_col_name;
         pair_start_index = 1;
     }
     else
     {
-        if (!state->current_col_name) {
-             fprintf(stderr, "ERROR: Column data found before any column name was defined.\n");
-             return -1;
+        if (!state->current_col_name)
+        {
+            fprintf(stderr,
+                    "ERROR: Column data found before any column name was defined.\n");
+            return -1;
         }
         col_name = state->current_col_name;
         pair_start_index = 0;
     }
 
-    if (!ensure_column_capacity(state)) return -1;
+    if (!ensure_column_capacity(state))
+        return -1;
 
     int col_idx = namemap_put(&state->col_map, col_name);
-    if (col_idx == -1) return -1;
+    if (col_idx == -1)
+        return -1;
 
     for (int i = pair_start_index; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double value = atof(tokens[i + 1]);
 
-        if (state->objective_row_name && strcmp(row_name, state->objective_row_name) == 0)
+        if (state->objective_row_name &&
+            strcmp(row_name, state->objective_row_name) == 0)
         {
             state->objective_coeffs[col_idx] += value;
         }
@@ -706,7 +744,8 @@ static int parse_columns_section(MpsParserState *state, char **tokens, int n_tok
     return 0;
 }
 
-static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
+static int parse_rhs_section(MpsParserState *state, char **tokens,
+                             int n_tokens)
 {
 
     for (int i = 1; i + 1 < n_tokens; i += 2)
@@ -714,7 +753,8 @@ static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
         const char *row_name = tokens[i];
         double value = atof(tokens[i + 1]);
 
-        if (state->objective_row_name && strcmp(row_name, state->objective_row_name) == 0)
+        if (state->objective_row_name &&
+            strcmp(row_name, state->objective_row_name) == 0)
         {
             state->objective_constant = -value;
         }
@@ -739,7 +779,8 @@ static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
     return 0;
 }
 
-static int parse_ranges_section(MpsParserState *state, char **tokens, int n_tokens)
+static int parse_ranges_section(MpsParserState *state, char **tokens,
+                                int n_tokens)
 {
 
     for (int i = 1; i + 1 < n_tokens; i += 2)
@@ -751,7 +792,8 @@ static int parse_ranges_section(MpsParserState *state, char **tokens, int n_toke
         if (row_idx != -1)
         {
             char type = state->constraint_types[row_idx];
-            double rhs = (type == 'L') ? state->constraint_upper_bounds[row_idx] : state->constraint_lower_bounds[row_idx];
+            double rhs = (type == 'L') ? state->constraint_upper_bounds[row_idx]
+                                       : state->constraint_lower_bounds[row_idx];
 
             if (type == 'G')
             {
@@ -777,7 +819,8 @@ static int parse_ranges_section(MpsParserState *state, char **tokens, int n_toke
     return 0;
 }
 
-static int parse_bounds_section(MpsParserState *state, char **tokens, int n_tokens)
+static int parse_bounds_section(MpsParserState *state, char **tokens,
+                                int n_tokens)
 {
     if (n_tokens < 3)
         return 0;
@@ -825,10 +868,12 @@ static int parse_bounds_section(MpsParserState *state, char **tokens, int n_toke
     return 0;
 }
 
-static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo, size_t num_constraints)
+static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo,
+                          size_t num_constraints)
 {
 
-    prob->constraint_matrix_row_pointers = safe_calloc(num_constraints + 1, sizeof(int));
+    prob->constraint_matrix_row_pointers =
+        safe_calloc(num_constraints + 1, sizeof(int));
     prob->constraint_matrix_col_indices = safe_malloc(coo->nnz * sizeof(int));
     prob->constraint_matrix_values = safe_malloc(coo->nnz * sizeof(double));
 
@@ -839,11 +884,13 @@ static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo, size_t num_constra
 
     for (size_t i = 1; i <= num_constraints; ++i)
     {
-        prob->constraint_matrix_row_pointers[i] += prob->constraint_matrix_row_pointers[i - 1];
+        prob->constraint_matrix_row_pointers[i] +=
+            prob->constraint_matrix_row_pointers[i - 1];
     }
 
     int *row_pos = safe_malloc((num_constraints + 1) * sizeof(int));
-    memcpy(row_pos, prob->constraint_matrix_row_pointers, (num_constraints + 1) * sizeof(int));
+    memcpy(row_pos, prob->constraint_matrix_row_pointers,
+           (num_constraints + 1) * sizeof(int));
 
     for (size_t i = 0; i < coo->nnz; ++i)
     {

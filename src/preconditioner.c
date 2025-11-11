@@ -16,18 +16,21 @@ limitations under the License.
 
 #include "preconditioner.h"
 #include "utils.h"
-#include <time.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
-#include <float.h>
+#include <time.h>
 
 #define SCALING_EPSILON 1e-12
 
 static lp_problem_t *deepcopy_problem(const lp_problem_t *prob);
-static void scale_problem(lp_problem_t *problem, const double *con_rescale, const double *var_rescale);
-static void ruiz_rescaling(lp_problem_t *problem, int num_iters, double *cum_con_rescale, double *cum_var_rescale);
-static void pock_chambolle_rescaling(lp_problem_t *problem, double alpha, double *cum_con_rescale, double *cum_var_rescale);
+static void scale_problem(lp_problem_t *problem, const double *con_rescale,
+                          const double *var_rescale);
+static void ruiz_rescaling(lp_problem_t *problem, int num_iters,
+                           double *cum_con_rescale, double *cum_var_rescale);
+static void pock_chambolle_rescaling(lp_problem_t *problem, double alpha,
+                                     double *cum_con_rescale,
+                                     double *cum_var_rescale);
 
 static lp_problem_t *deepcopy_problem(const lp_problem_t *prob)
 {
@@ -35,7 +38,8 @@ static lp_problem_t *deepcopy_problem(const lp_problem_t *prob)
 
     new_prob->num_variables = prob->num_variables;
     new_prob->num_constraints = prob->num_constraints;
-    new_prob->constraint_matrix_num_nonzeros = prob->constraint_matrix_num_nonzeros;
+    new_prob->constraint_matrix_num_nonzeros =
+        prob->constraint_matrix_num_nonzeros;
     new_prob->objective_constant = prob->objective_constant;
 
     size_t var_bytes = prob->num_variables * sizeof(double);
@@ -56,32 +60,42 @@ static lp_problem_t *deepcopy_problem(const lp_problem_t *prob)
     memcpy(new_prob->variable_lower_bound, prob->variable_lower_bound, var_bytes);
     memcpy(new_prob->variable_upper_bound, prob->variable_upper_bound, var_bytes);
     memcpy(new_prob->objective_vector, prob->objective_vector, var_bytes);
-    memcpy(new_prob->constraint_lower_bound, prob->constraint_lower_bound, con_bytes);
-    memcpy(new_prob->constraint_upper_bound, prob->constraint_upper_bound, con_bytes);
-    memcpy(new_prob->constraint_matrix_row_pointers, prob->constraint_matrix_row_pointers, row_ptr_bytes);
-    memcpy(new_prob->constraint_matrix_col_indices, prob->constraint_matrix_col_indices, nnz_bytes_col);
-    memcpy(new_prob->constraint_matrix_values, prob->constraint_matrix_values, nnz_bytes_val);
+    memcpy(new_prob->constraint_lower_bound, prob->constraint_lower_bound,
+           con_bytes);
+    memcpy(new_prob->constraint_upper_bound, prob->constraint_upper_bound,
+           con_bytes);
+    memcpy(new_prob->constraint_matrix_row_pointers,
+           prob->constraint_matrix_row_pointers, row_ptr_bytes);
+    memcpy(new_prob->constraint_matrix_col_indices,
+           prob->constraint_matrix_col_indices, nnz_bytes_col);
+    memcpy(new_prob->constraint_matrix_values, prob->constraint_matrix_values,
+           nnz_bytes_val);
 
-    if (prob->primal_start) {
+    if (prob->primal_start)
+    {
         new_prob->primal_start = safe_malloc(var_bytes);
         memcpy(new_prob->primal_start, prob->primal_start, var_bytes);
-    } else {
+    }
+    else
+    {
         new_prob->primal_start = NULL;
     }
-    if (prob->dual_start) {
+    if (prob->dual_start)
+    {
         new_prob->dual_start = safe_malloc(con_bytes);
         memcpy(new_prob->dual_start, prob->dual_start, con_bytes);
-    } else {
+    }
+    else
+    {
         new_prob->dual_start = NULL;
     }
 
     return new_prob;
 }
 
-static void scale_problem(
-    lp_problem_t *problem,
-    const double *constraint_rescaling,
-    const double *variable_rescaling)
+static void scale_problem(lp_problem_t *problem,
+                          const double *constraint_rescaling,
+                          const double *variable_rescaling)
 {
     for (int i = 0; i < problem->num_variables; ++i)
     {
@@ -101,16 +115,15 @@ static void scale_problem(
              nz_idx < problem->constraint_matrix_row_pointers[row + 1]; ++nz_idx)
         {
             int col = problem->constraint_matrix_col_indices[nz_idx];
-            problem->constraint_matrix_values[nz_idx] /= (constraint_rescaling[row] * variable_rescaling[col]);
+            problem->constraint_matrix_values[nz_idx] /=
+                (constraint_rescaling[row] * variable_rescaling[col]);
         }
     }
 }
 
-static void ruiz_rescaling(
-    lp_problem_t *problem,
-    int num_iterations,
-    double *cum_constraint_rescaling,
-    double *cum_variable_rescaling)
+static void ruiz_rescaling(lp_problem_t *problem, int num_iterations,
+                           double *cum_constraint_rescaling,
+                           double *cum_variable_rescaling)
 {
     int num_cons = problem->num_constraints;
     int num_vars = problem->num_variables;
@@ -127,12 +140,15 @@ static void ruiz_rescaling(
         for (int row = 0; row < num_cons; ++row)
         {
             for (int nz_idx = problem->constraint_matrix_row_pointers[row];
-                 nz_idx < problem->constraint_matrix_row_pointers[row + 1]; ++nz_idx)
+                 nz_idx < problem->constraint_matrix_row_pointers[row + 1];
+                 ++nz_idx)
             {
                 int col = problem->constraint_matrix_col_indices[nz_idx];
                 if (col < 0 || col >= num_vars)
                 {
-                    fprintf(stderr, "Error: Invalid column index %d at nz_idx %d for row %d. Must be in [0, %d).\n",
+                    fprintf(stderr,
+                            "Error: Invalid column index %d at nz_idx %d for row %d. "
+                            "Must be in [0, %d).\n",
                             col, nz_idx, row, num_vars);
                 }
                 double val = fabs(problem->constraint_matrix_values[nz_idx]);
@@ -144,9 +160,11 @@ static void ruiz_rescaling(
         }
 
         for (int i = 0; i < num_vars; ++i)
-            var_rescale[i] = (var_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(var_rescale[i]);
+            var_rescale[i] =
+                (var_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(var_rescale[i]);
         for (int i = 0; i < num_cons; ++i)
-            con_rescale[i] = (con_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(con_rescale[i]);
+            con_rescale[i] =
+                (con_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(con_rescale[i]);
 
         scale_problem(problem, con_rescale, var_rescale);
         for (int i = 0; i < num_vars; ++i)
@@ -158,11 +176,9 @@ static void ruiz_rescaling(
     free(var_rescale);
 }
 
-static void pock_chambolle_rescaling(
-    lp_problem_t *problem,
-    double alpha,
-    double *cum_constraint_rescaling,
-    double *cum_variable_rescaling)
+static void pock_chambolle_rescaling(lp_problem_t *problem, double alpha,
+                                     double *cum_constraint_rescaling,
+                                     double *cum_variable_rescaling)
 {
     int num_cons = problem->num_constraints;
     int num_vars = problem->num_variables;
@@ -182,9 +198,11 @@ static void pock_chambolle_rescaling(
     }
 
     for (int i = 0; i < num_vars; ++i)
-        var_rescale[i] = (var_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(var_rescale[i]);
+        var_rescale[i] =
+            (var_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(var_rescale[i]);
     for (int i = 0; i < num_cons; ++i)
-        con_rescale[i] = (con_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(con_rescale[i]);
+        con_rescale[i] =
+            (con_rescale[i] < SCALING_EPSILON) ? 1.0 : sqrt(con_rescale[i]);
 
     scale_problem(problem, con_rescale, var_rescale);
     for (int i = 0; i < num_vars; ++i)
@@ -196,16 +214,17 @@ static void pock_chambolle_rescaling(
     free(var_rescale);
 }
 
-rescale_info_t *rescale_problem(
-    const pdhg_parameters_t *params,
-    const lp_problem_t *original_problem)
+rescale_info_t *rescale_problem(const pdhg_parameters_t *params,
+                                const lp_problem_t *original_problem)
 {
     clock_t start_rescaling = clock();
-    rescale_info_t *rescale_info = (rescale_info_t *)safe_calloc(1, sizeof(rescale_info_t));
+    rescale_info_t *rescale_info =
+        (rescale_info_t *)safe_calloc(1, sizeof(rescale_info_t));
     rescale_info->scaled_problem = deepcopy_problem(original_problem);
     if (rescale_info->scaled_problem == NULL)
     {
-        fprintf(stderr, "Failed to create a copy of the problem. Aborting rescale.\n");
+        fprintf(stderr,
+                "Failed to create a copy of the problem. Aborting rescale.\n");
         return NULL;
     }
     int num_cons = original_problem->num_constraints;
@@ -219,31 +238,41 @@ rescale_info_t *rescale_problem(
         rescale_info->var_rescale[i] = 1.0;
     if (params->l_inf_ruiz_iterations > 0)
     {
-        ruiz_rescaling(rescale_info->scaled_problem, params->l_inf_ruiz_iterations, rescale_info->con_rescale, rescale_info->var_rescale);
+        ruiz_rescaling(rescale_info->scaled_problem, params->l_inf_ruiz_iterations,
+                       rescale_info->con_rescale, rescale_info->var_rescale);
     }
     if (params->has_pock_chambolle_alpha)
     {
-        pock_chambolle_rescaling(rescale_info->scaled_problem, params->pock_chambolle_alpha, rescale_info->con_rescale, rescale_info->var_rescale);
+        pock_chambolle_rescaling(
+            rescale_info->scaled_problem, params->pock_chambolle_alpha,
+            rescale_info->con_rescale, rescale_info->var_rescale);
     }
     if (params->bound_objective_rescaling)
     {
         double bound_norm_sq = 0.0;
         for (int i = 0; i < num_cons; ++i)
         {
-            if (isfinite(rescale_info->scaled_problem->constraint_lower_bound[i]) && (rescale_info->scaled_problem->constraint_lower_bound[i] != rescale_info->scaled_problem->constraint_upper_bound[i]))
+            if (isfinite(rescale_info->scaled_problem->constraint_lower_bound[i]) &&
+                (rescale_info->scaled_problem->constraint_lower_bound[i] !=
+                 rescale_info->scaled_problem->constraint_upper_bound[i]))
             {
-                bound_norm_sq += rescale_info->scaled_problem->constraint_lower_bound[i] * rescale_info->scaled_problem->constraint_lower_bound[i];
+                bound_norm_sq +=
+                    rescale_info->scaled_problem->constraint_lower_bound[i] *
+                    rescale_info->scaled_problem->constraint_lower_bound[i];
             }
             if (isfinite(rescale_info->scaled_problem->constraint_upper_bound[i]))
             {
-                bound_norm_sq += rescale_info->scaled_problem->constraint_upper_bound[i] * rescale_info->scaled_problem->constraint_upper_bound[i];
+                bound_norm_sq +=
+                    rescale_info->scaled_problem->constraint_upper_bound[i] *
+                    rescale_info->scaled_problem->constraint_upper_bound[i];
             }
         }
 
         double obj_norm_sq = 0.0;
         for (int i = 0; i < num_vars; ++i)
         {
-            obj_norm_sq += rescale_info->scaled_problem->objective_vector[i] * rescale_info->scaled_problem->objective_vector[i];
+            obj_norm_sq += rescale_info->scaled_problem->objective_vector[i] *
+                           rescale_info->scaled_problem->objective_vector[i];
         }
 
         rescale_info->con_bound_rescale = 1.0 / (sqrt(bound_norm_sq) + 1.0);
@@ -251,14 +280,19 @@ rescale_info_t *rescale_problem(
 
         for (int i = 0; i < num_cons; ++i)
         {
-            rescale_info->scaled_problem->constraint_lower_bound[i] *= rescale_info->con_bound_rescale;
-            rescale_info->scaled_problem->constraint_upper_bound[i] *= rescale_info->con_bound_rescale;
+            rescale_info->scaled_problem->constraint_lower_bound[i] *=
+                rescale_info->con_bound_rescale;
+            rescale_info->scaled_problem->constraint_upper_bound[i] *=
+                rescale_info->con_bound_rescale;
         }
         for (int i = 0; i < num_vars; ++i)
         {
-            rescale_info->scaled_problem->variable_lower_bound[i] *= rescale_info->con_bound_rescale;
-            rescale_info->scaled_problem->variable_upper_bound[i] *= rescale_info->con_bound_rescale;
-            rescale_info->scaled_problem->objective_vector[i] *= rescale_info->obj_vec_rescale;
+            rescale_info->scaled_problem->variable_lower_bound[i] *=
+                rescale_info->con_bound_rescale;
+            rescale_info->scaled_problem->variable_upper_bound[i] *=
+                rescale_info->con_bound_rescale;
+            rescale_info->scaled_problem->objective_vector[i] *=
+                rescale_info->obj_vec_rescale;
         }
     }
     else
@@ -266,6 +300,7 @@ rescale_info_t *rescale_problem(
         rescale_info->con_bound_rescale = 1.0;
         rescale_info->obj_vec_rescale = 1.0;
     }
-    rescale_info->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
+    rescale_info->rescaling_time_sec =
+        (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
     return rescale_info;
 }

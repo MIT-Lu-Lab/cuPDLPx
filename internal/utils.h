@@ -16,11 +16,13 @@ limitations under the License.
 
 #pragma once
 
-#include "struct.h"
-#include <stdbool.h>
+#include "internal_types.h"
+#include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
-#include <cublas_v2.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #ifdef __cplusplus
 extern "C"
 {
@@ -68,11 +70,10 @@ extern "C"
     extern const double HOST_ZERO;
 
     void *safe_malloc(size_t size);
-    
+
     void *safe_calloc(size_t num, size_t size);
 
     void *safe_realloc(void *ptr, size_t new_size);
-
 
     double estimate_maximum_singular_value(
         cusparseHandle_t sparse_handle,
@@ -127,18 +128,18 @@ extern "C"
     void compute_residual(pdhg_solver_state_t *state);
 
     void compute_infeasibility_information(pdhg_solver_state_t *state);
-    
+
     void fill_or_copy(double **dest, int n, const double *src, double fill_value);
 
-    int dense_to_csr(const matrix_desc_t* desc,
-                     int** row_ptr, int** col_ind, double** vals, int* nnz_out);
+    int dense_to_csr(const matrix_desc_t *desc,
+                     int **row_ptr, int **col_ind, double **vals, int *nnz_out);
 
-    int csc_to_csr(const matrix_desc_t* desc,
-                   int** row_ptr, int** col_ind, double** vals, int* nnz_out);
+    int csc_to_csr(const matrix_desc_t *desc,
+                   int **row_ptr, int **col_ind, double **vals, int *nnz_out);
 
-    int coo_to_csr(const matrix_desc_t* desc,
-                   int** row_ptr, int** col_ind, double** vals, int* nnz_out); 
-                   
+    int coo_to_csr(const matrix_desc_t *desc,
+                   int **row_ptr, int **col_ind, double **vals, int *nnz_out);
+
 #ifdef __cplusplus
 }
 
