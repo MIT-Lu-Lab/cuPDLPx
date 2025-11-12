@@ -127,6 +127,7 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
     fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
     if(result->feasibility_polishing_time > 0.0){
         fprintf(outfile, "Feasibility Polishing Time (sec): %e\n", result->feasibility_polishing_time);
+        fprintf(outfile, "Feasibility Polishing Iteration Count: %d\n", result->feasibility_iteration);
     }
     fclose(outfile);
     free(file_path);
@@ -151,7 +152,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --eps_opt <tolerance>           Relative optimality tolerance (default: 1e-4).\n");
     fprintf(stderr, "      --eps_feas <tolerance>          Relative feasibility tolerance (default: 1e-4).\n");
     fprintf(stderr, "      --eps_infeas_detect <tolerance> Infeasibility detection tolerance (default: 1e-10).\n");
-    fprintf(stderr, "      --eps_feas_polish_relative <tolerance> Relative feasibility tolerance for polishing (default: 1e-6).\n");
+    fprintf(stderr, "      --eps_feas_polish <tolerance> Relative feasibility tolerance for polishing (default: 1e-6).\n");
     fprintf(stderr, "  -f  --feasibility_polishing         Enable feasibility polishing phase (default: false).\n");
 }
 
