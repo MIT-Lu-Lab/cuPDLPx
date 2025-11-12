@@ -157,7 +157,8 @@ typedef struct
 	double *dual_slack;
 	double rescaling_time_sec;
 	double cumulative_time_sec;
-	double feasibilitly_polishing_time;
+	double feasibility_polishing_time;
+	int feasibility_iteration;
 
 	double *primal_residual;
 	double absolute_primal_residual;
@@ -214,6 +215,7 @@ typedef struct
 	double rescaling_time_sec;
 	double cumulative_time_sec;
 	double feasibility_polishing_time;
+	int feasibility_iteration;
 
 	double absolute_primal_residual;
 	double relative_primal_residual;

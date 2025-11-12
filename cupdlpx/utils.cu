@@ -538,7 +538,8 @@ __global__ void compute_dual_feas_polish_residual_kerenl(
     }
     else if (i < num_constraints + num_variables)
     {
-        dual_obj_contribution[i] = fmax(dual_solution[i], 0.0) * const_lb_finite[i] + fmin(dual_solution[i], 0.0) * const_ub_finite[i];
+        int idx = i - num_variables;
+        dual_obj_contribution[idx] = fmax(dual_solution[idx], 0.0) * const_lb_finite[idx] + fmin(dual_solution[idx], 0.0) * const_ub_finite[idx];
     }
 }
 

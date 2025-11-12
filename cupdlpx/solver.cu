@@ -136,7 +136,12 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
     pdhg_final_log(state, params->verbose, state->termination_reason);
 
-    feasibility_polish(params, state);
+    if (params->feasibility_polishing && 
+        state->termination_reason != TERMINATION_REASON_DUAL_INFEASIBLE && 
+        state->termination_reason != TERMINATION_REASON_PRIMAL_INFEASIBLE)
+    {
+        feasibility_polish(params, state);
+    }
 
     cupdlpx_result_t *results = create_result_from_state(state);
     pdhg_solver_state_free(state);
@@ -145,68 +150,67 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
 void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
 {
-    if (params->feasibility_polishing)
+    clock_t start_time = clock();
+    if (state->relative_primal_residual < params->termination_criteria.eps_feas_polish_relative &&
+        state->relative_dual_residual < params->termination_criteria.eps_feas_polish_relative)
     {
-        clock_t start_time = clock();
-        if (state->relative_primal_residual < params->termination_criteria.eps_feas_polish_relative &&
-            state->relative_dual_residual < params->termination_criteria.eps_feas_polish_relative)
-        {
-            
-            printf("Skipping feasibility polishing as the solution is already sufficiently feasible.\n");
-            return;
-        }
-        double original_primal_weight = 0.0;
-        if (params->bound_objective_rescaling)
-        {
-            original_primal_weight = 1.0;
-        }
-        else
-        {
-            original_primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
-        }
-
-        //PRIMAL FEASIBILITY POLISHING
-        pdhg_solver_state_t *primal_state = initialize_primal_feas_polish_state(state);
-        primal_state->primal_weight = original_primal_weight;
-        primal_state->best_primal_weight = original_primal_weight;
-        primal_feasibility_polish(params, primal_state, state);
-
-        if (primal_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
-        {
-            CUDA_CHECK(cudaMemcpy(
-                state->pdhg_primal_solution, primal_state->pdhg_primal_solution,
-                state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
-            state->absolute_primal_residual = primal_state->absolute_primal_residual;
-            state->relative_primal_residual = primal_state->relative_primal_residual;
-            state->primal_objective_value = primal_state->primal_objective_value;
-        }
         
-        //DUAL FEASIBILITY POLISHING
-        pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
-        dual_state->primal_weight = original_primal_weight;
-        dual_state->best_primal_weight = original_primal_weight;
-        dual_feasibility_polish(params, dual_state, state);
-
-        if (dual_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
-        {
-            CUDA_CHECK(cudaMemcpy(
-                state->pdhg_dual_solution, dual_state->pdhg_dual_solution,
-                state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
-            state->absolute_dual_residual = dual_state->absolute_dual_residual;
-            state->relative_dual_residual = dual_state->relative_dual_residual;
-            state->dual_objective_value = dual_state->dual_objective_value;
-        }
-
-        state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
-        state->relative_objective_gap = state->objective_gap / (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
-
-        // FINAL LOGGING
-        pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
-        primal_feas_polish_state_free(primal_state);
-        dual_feas_polish_state_free(dual_state);
-
-        state->feasibilitly_polishing_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+        printf("Skipping feasibility polishing as the solution is already sufficiently feasible.\n");
+        return;
     }
+    double original_primal_weight = 0.0;
+    if (params->bound_objective_rescaling)
+    {
+        original_primal_weight = 1.0;
+    }
+    else
+    {
+        original_primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
+    }
+
+    //PRIMAL FEASIBILITY POLISHING
+    pdhg_solver_state_t *primal_state = initialize_primal_feas_polish_state(state);
+    primal_state->primal_weight = original_primal_weight;
+    primal_state->best_primal_weight = original_primal_weight;
+    primal_feasibility_polish(params, primal_state, state);
+
+    if (primal_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
+    {
+        CUDA_CHECK(cudaMemcpy(
+            state->pdhg_primal_solution, primal_state->pdhg_primal_solution,
+            state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+        state->absolute_primal_residual = primal_state->absolute_primal_residual;
+        state->relative_primal_residual = primal_state->relative_primal_residual;
+        state->primal_objective_value = primal_state->primal_objective_value;
+    }
+    state->feasibility_iteration += primal_state->total_count - 1;
+    
+    //DUAL FEASIBILITY POLISHING
+    pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
+    dual_state->primal_weight = original_primal_weight;
+    dual_state->best_primal_weight = original_primal_weight;
+    dual_feasibility_polish(params, dual_state, state);
+
+    if (dual_state->termination_reason == TERMINATION_REASON_FEAS_POLISH_SUCCESS)
+    {
+        CUDA_CHECK(cudaMemcpy(
+            state->pdhg_dual_solution, dual_state->pdhg_dual_solution,
+            state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+        state->absolute_dual_residual = dual_state->absolute_dual_residual;
+        state->relative_dual_residual = dual_state->relative_dual_residual;
+        state->dual_objective_value = dual_state->dual_objective_value;
+    }
+    state->feasibility_iteration += dual_state->total_count - 1;
+
+    state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
+    state->relative_objective_gap = state->objective_gap / (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
+    
+    // FINAL LOGGING
+    pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
+    primal_feas_polish_state_free(primal_state);
+    dual_feas_polish_state_free(dual_state);
+
+    state->feasibility_polishing_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
     return;
 }
 
@@ -310,9 +314,12 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(
     int num_var = original_state->num_variables;
     int num_cons = original_state->num_constraints;
 
+#define ALLOC_ZERO(dest, bytes)           \
+    CUDA_CHECK(cudaMalloc(&dest, bytes)); \
+    CUDA_CHECK(cudaMemset(dest, 0, bytes));
+
     //RESET PROBLEM TO FEASIBILITY PROBLEM
-    CUDA_CHECK(cudaMalloc(&primal_state->objective_vector, num_var * sizeof(double)));
-    CUDA_CHECK(cudaMemset(primal_state->objective_vector, 0, num_var * sizeof(double)));
+    ALLOC_ZERO(primal_state->objective_vector, num_var * sizeof(double));
     primal_state->objective_constant = 0.0;
 
 #define ALLOC_AND_COPY_DEV(dest, src, bytes)  \
@@ -325,10 +332,6 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(
     ALLOC_AND_COPY_DEV(primal_state->pdhg_primal_solution, original_state->pdhg_primal_solution, num_var * sizeof(double));
     ALLOC_AND_COPY_DEV(primal_state->reflected_primal_solution, original_state->reflected_primal_solution, num_var * sizeof(double));
     ALLOC_AND_COPY_DEV(primal_state->primal_product, original_state->primal_product, num_cons * sizeof(double));
-    
-#define ALLOC_ZERO(dest, bytes)           \
-    CUDA_CHECK(cudaMalloc(&dest, bytes)); \
-    CUDA_CHECK(cudaMemset(dest, 0, bytes));
 
     //ALLOC ZERO FOR OTHERS
     ALLOC_ZERO(primal_state->initial_dual_solution, num_cons * sizeof(double));
@@ -498,10 +501,6 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(
     ALLOC_AND_COPY_DEV(dual_state->reflected_dual_solution, original_state->reflected_dual_solution, num_cons * sizeof(double));
     ALLOC_AND_COPY_DEV(dual_state->dual_product, original_state->dual_product, num_var * sizeof(double));
     ALLOC_AND_COPY_DEV(dual_state->dual_slack, original_state->dual_slack, num_var * sizeof(double));
-
-    #define ALLOC_ZERO(dest, bytes)           \
-        CUDA_CHECK(cudaMalloc(&dest, bytes)); \
-        CUDA_CHECK(cudaMemset(dest, 0, bytes));
 
     //ALLOC ZERO FOR OTHERS
     ALLOC_ZERO(dual_state->initial_primal_solution, num_var * sizeof(double));
@@ -1231,8 +1230,8 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state)
     results->primal_ray_linear_objective = state->primal_ray_linear_objective;
     results->dual_ray_objective = state->dual_ray_objective;
     results->termination_reason = state->termination_reason;
-    results->feasibility_polishing_time = state->feasibilitly_polishing_time;
-
+    results->feasibility_polishing_time = state->feasibility_polishing_time;
+    results->feasibility_iteration = state->feasibility_iteration;
     return results;
 }
 
