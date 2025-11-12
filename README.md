@@ -66,7 +66,7 @@ The solver is invoked with the following syntax, specifying an input file and an
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
 | `--eps_infeas_detect` | `double` | Infeasibility detection tolerance. | `1e-10` |
 | `-f`,`--feasibility_polishing` |`flag`   | Run the polishing loop           | `false` |
-| `--eps_feas_polish_relative` | `double` | Relative tolerance for polishing | `1e-6`  |
+| `--eps_feas_polish` | `double` | Relative tolerance for polishing | `1e-6`  |
 
 
 ### Output Files
