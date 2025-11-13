@@ -122,6 +122,9 @@ typedef struct
 
 	double *ones_primal_d;
 	double *ones_dual_d;
+
+	double feasibility_polishing_time;
+	int feasibility_iteration;
 } pdhg_solver_state_t;
 
 typedef struct
