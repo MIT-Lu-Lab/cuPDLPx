@@ -125,6 +125,10 @@ extern "C"
     int coo_to_csr(const matrix_desc_t *desc,
                    int **row_ptr, int **col_ind, double **vals, int *nnz_out);
 
+    int calculate_max_nnz_row(int m, const int* matA_row_ptr);
+
+    int calculate_max_nnz_col(int n, const int* matAt_row_ptr);
+
 #ifdef __cplusplus
 }
 

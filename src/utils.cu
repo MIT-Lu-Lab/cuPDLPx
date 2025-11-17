@@ -961,3 +961,27 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
     *nnz_out = nnz;
     return 0;
 }
+
+int calculate_max_nnz_row(int m, const int* matA_row_ptr) {
+    int max_nnz = 0;
+    int* host_ptr = (int*)safe_malloc((size_t)(m + 1) * sizeof(int));
+    CUDA_CHECK(cudaMemcpy(host_ptr, matA_row_ptr, (size_t)(m + 1) * sizeof(int), cudaMemcpyDeviceToHost));
+    for (int i = 0; i < m; ++i) {
+        int row_nnz = host_ptr[i + 1] - host_ptr[i];
+        if (row_nnz > max_nnz) max_nnz = row_nnz;
+    }
+    free(host_ptr);
+    return max_nnz;
+}
+
+int calculate_max_nnz_col(int n, const int* matAt_row_ptr) {
+    int max_nnz = 0;
+    int* host_ptr = (int*)safe_malloc((size_t)(n + 1) * sizeof(int));
+    CUDA_CHECK(cudaMemcpy(host_ptr, matAt_row_ptr, (size_t)(n + 1) * sizeof(int), cudaMemcpyDeviceToHost));
+    for (int j = 0; j < n; ++j) {
+        int col_nnz = host_ptr[j + 1] - host_ptr[j];
+        if (col_nnz > max_nnz) max_nnz = col_nnz;
+    }
+    free(host_ptr);
+    return max_nnz;
+}
