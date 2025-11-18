@@ -41,6 +41,8 @@ const char *termination_reason_tToString(termination_reason_t reason)
     case TERMINATION_REASON_ITERATION_LIMIT:
         return "ITERATION_LIMIT";
     case TERMINATION_REASON_UNSPECIFIED:
+    case TERMINATION_REASON_FEAS_POLISH_SUCCESS:
+        return "FEAS_POLISH_SUCCESS";
     default:
         return "UNSPECIFIED";
     }
@@ -133,6 +135,10 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
     fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
     fprintf(outfile, "Relative Objective Gap: %e\n",
             result->relative_objective_gap);
+    if(result->feasibility_polishing_time > 0.0){
+        fprintf(outfile, "Feasibility Polishing Time (sec): %e\n", result->feasibility_polishing_time);
+        fprintf(outfile, "Feasibility Polishing Iteration Count: %d\n", result->feasibility_iteration);
+    }
     fclose(outfile);
     free(file_path);
 }
@@ -169,6 +175,10 @@ void print_usage(const char *prog_name)
                     "tolerance (default: 1e-4).\n");
     fprintf(stderr, "      --eps_infeas_detect <tolerance> Infeasibility "
                     "detection tolerance (default: 1e-10).\n");
+    fprintf(stderr, "      --eps_feas_polish <tolerance>   Relative feasibility "
+                    "polish tolerance (default: 1e-6).\n");
+    fprintf(stderr, "  -f  --feasibility_polishing         Enable feasibility " 
+                    "use feasibility polishing (default: false).\n");
 }
 
 int main(int argc, char *argv[])
@@ -184,10 +194,12 @@ int main(int argc, char *argv[])
         {"eps_opt", required_argument, 0, 1003},
         {"eps_feas", required_argument, 0, 1004},
         {"eps_infeas_detect", required_argument, 0, 1005},
+        {"eps_feas_polish", required_argument, 0, 1006},
+        {"feasibility_polishing", no_argument, 0, 'f'},
         {0, 0, 0, 0}};
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "hv", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "hvf", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -211,6 +223,12 @@ int main(int argc, char *argv[])
             break;
         case 1005: // --eps_infeas_detect
             params.termination_criteria.eps_infeasible = atof(optarg);
+            break;
+        case 1006: // --eps_feas_polish_relative
+            params.termination_criteria.eps_feas_polish_relative = atof(optarg);
+            break;
+        case 'f':                  // --feasibility_polishing
+            params.feasibility_polishing = true;
             break;
         case '?': // Unknown option
             return 1;

@@ -131,6 +131,9 @@ typedef struct
 
 	pdhg_update_algorithm_t primal_update_algorithm;
 	pdhg_update_algorithm_t dual_update_algorithm;
+  
+	double feasibility_polishing_time;
+	int feasibility_iteration;
 } pdhg_solver_state_t;
 
 typedef struct

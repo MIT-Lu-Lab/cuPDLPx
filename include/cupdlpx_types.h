@@ -31,7 +31,8 @@ extern "C"
 		TERMINATION_REASON_PRIMAL_INFEASIBLE,
 		TERMINATION_REASON_DUAL_INFEASIBLE,
 		TERMINATION_REASON_TIME_LIMIT,
-		TERMINATION_REASON_ITERATION_LIMIT
+		TERMINATION_REASON_ITERATION_LIMIT,
+		TERMINATION_REASON_FEAS_POLISH_SUCCESS
 	} termination_reason_t;
 
 	typedef struct
@@ -70,6 +71,7 @@ extern "C"
 	{
 		double eps_optimal_relative;
 		double eps_feasible_relative;
+		double eps_feas_polish_relative;
 		double eps_infeasible;
 		double time_sec_limit;
 		int iteration_limit;
@@ -86,6 +88,7 @@ extern "C"
 		termination_criteria_t termination_criteria;
 		restart_parameters_t restart_params;
 		double reflection_coefficient;
+		bool feasibility_polishing;
 	} pdhg_parameters_t;
 
 	typedef struct
@@ -113,7 +116,8 @@ extern "C"
 		double primal_ray_linear_objective;
 		double dual_ray_objective;
 		termination_reason_t termination_reason;
-
+		double feasibility_polishing_time;
+		int feasibility_iteration;
 	} cupdlpx_result_t;
 
 	// matrix formats

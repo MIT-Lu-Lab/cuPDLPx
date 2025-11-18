@@ -67,6 +67,8 @@ The solver is invoked with the following syntax, specifying an input file and an
 | `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
 | `--eps_infeas_detect` | `double` | Infeasibility detection tolerance. | `1e-10` |
+| `-f`,`--feasibility_polishing` |`flag`   | Run the polishing loop           | `false` |
+| `--eps_feas_polish` | `double` | Relative tolerance for polishing | `1e-6`  |
 
 ### Output Files
 The solver generates three text files in the specified <output_directory>. The filenames are derived from the input file's basename. For an input `INSTANCE.mps.gz`, the output will be:
@@ -137,6 +139,10 @@ cupdlpx_result_t* solve_lp_problem(
 `solve_lp_problem` parameters:
 - `prob`: An LP problem built with `create_LP_problem`.
 - `params`: Solver parameters. If `NULL`, the solver will use default parameters.
+
+#### Feasibility Polishing (optional post-solve refinement)
+
+After the normal PDHG solve you can ask cuPDLPx to run an extra feasibility-polishing phase that tries to improve primal/dual feasibility.
 
 #### Example: Solving a Small LP
 ```c
