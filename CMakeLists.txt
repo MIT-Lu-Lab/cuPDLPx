@@ -2,7 +2,7 @@
 # ROOT CMakeLists.txt for cuPDLPx (Unified Build System)
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.20)
-
+set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.6/bin/nvcc" CACHE FILEPATH "CUDA Compiler" FORCE)
 # Project config
 project(cupdlpx LANGUAGES C CXX CUDA)
 

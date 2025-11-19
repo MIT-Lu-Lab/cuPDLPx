@@ -280,6 +280,10 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
 
     // reflection
     getf("reflection_coefficient", p->reflection_coefficient);
+
+    // Feasibility Polishing
+    getb("feasibility_polishing", p->feasibility_polishing);
+    getf("eps_feas_polish_relative", p->termination_criteria.eps_feas_polish_relative);
 }
 
 // view of matrix from Python
