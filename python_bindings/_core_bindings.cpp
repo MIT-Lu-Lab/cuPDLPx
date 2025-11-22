@@ -236,6 +236,10 @@ static py::dict get_default_params_py()
     // reflection
     d["reflection_coefficient"] = p.reflection_coefficient;
 
+    // feasiblity polishing
+    d["feasibility_polishing"] = p.feasibility_polishing;
+    d["eps_feas_polish_relative"] = p.termination_criteria.eps_feas_polish_relative;
+
     return d;
 }
 
