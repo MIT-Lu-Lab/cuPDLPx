@@ -349,7 +349,14 @@ void print_initial_info(const pdhg_parameters_t *params,
            params->termination_criteria.eps_feasible_relative);
     printf("  eps_infeas_detect  : %.1e\n",
            params->termination_criteria.eps_infeasible);
+}
 
+void print_table_head(const pdhg_parameters_t *params)
+{
+    if (!params->verbose)
+    {
+        return;
+    }
     printf("---------------------------------------------------------------------"
            "------------------\n");
     printf("%s | %s | %s | %s \n", "   runtime    ", "    objective     ",

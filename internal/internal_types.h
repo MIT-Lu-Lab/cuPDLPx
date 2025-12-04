@@ -37,6 +37,7 @@ typedef enum
 	FUSED_UPDATE,
 } pdhg_update_algorithm_t;
 
+
 typedef struct
 {
 	int num_variables;

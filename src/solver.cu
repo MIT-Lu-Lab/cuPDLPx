@@ -111,6 +111,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
     initialize_step_size_and_primal_weight(state, params);
     clock_t start_time = clock();
     bool do_restart = false;
+    print_table_head(params);
     while (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
         if ((state->is_this_major_iteration || state->total_count == 0) ||
@@ -992,6 +993,8 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->restart_params.k_i = 0.01;
     params->restart_params.k_d = 0.0;
     params->restart_params.i_smooth = 0.3;
+    params->feasibility_polishing = false;
+    params->tuning_method = PDHG_TUNING_BENCHMARK;
 }
 
 __global__ void fused_compute_next_pdhg_primal_solution_kernel(
@@ -1113,6 +1116,9 @@ __global__ void fused_compute_next_pdhg_dual_solution_major_kernel(
         pdhg_dual[i] = (temp - temp_proj) * step_size;
         reflected_dual[i] = 2.0 * pdhg_dual[i] - current_dual[i];
         primal_product[i] = primal_prod;
+    }
+    return;
+}
 //Feasibility Polishing
 void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
 {
@@ -1259,6 +1265,10 @@ __global__ void fused_compute_next_pdhg_dual_solution_kernel(
         double temp_proj = fmax(-const_ub[i], fmin(temp, -const_lb[i]));
         reflected_dual[i] = 2.0 * (temp - temp_proj) * step_size - current_dual[i];
         primal_product[i] = primal_prod;
+    }
+    return;
+}
+
 void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state)
 {
     print_initial_feas_polish_info(false, params);
@@ -1359,37 +1369,176 @@ static void fused_compute_next_pdhg_dual_solution(pdhg_solver_state_t *state)
     }
 }
 
-static void decide_fused_update_usage(pdhg_solver_state_t *state,
-                                 const pdhg_parameters_t *params)
+static void fix_cusparse_decide_fused_update_usage(pdhg_solver_state_t *state,
+                                                   const pdhg_parameters_t *params)
 {
-    // Heuristic to decide whether to use fused kernels or not
-    // Currently, we use fused kernels when the number of non-zeros is less than a threshold
-    int n_cons = state->num_constraints;
-    int n_vars = state->num_variables;
-    int max_nnz_A_row = calculate_max_nnz_row(n_cons, state->constraint_matrix->row_ptr);
-    int max_nnz_At_row = calculate_max_nnz_row(n_vars, state->constraint_matrix_t->row_ptr);
-    int fusion_nnz_threshold = 100;
-    double fusion_density_threshold = 0.01;
-    int primal_threshold = fmin(fusion_nnz_threshold,
-                                      (int)(fusion_density_threshold * n_cons));
-    int dual_threshold = fmin(fusion_nnz_threshold,
-                                    (int)(fusion_density_threshold * n_vars));
-    if (max_nnz_A_row > dual_threshold) state->dual_update_algorithm = CUSPARSE_UPDATE;
-    else state->dual_update_algorithm = FUSED_UPDATE;
-    if (max_nnz_At_row > primal_threshold) state->primal_update_algorithm = CUSPARSE_UPDATE;
-    else state->primal_update_algorithm = FUSED_UPDATE;
-    if (params->verbose)
-    {
-        if (state->primal_update_algorithm == FUSED_UPDATE)
-            printf("Using fused primal update kernel.\n");
-        else
-            printf("Using cuSPARSE primal update kernel.\n");
-        if (state->dual_update_algorithm == FUSED_UPDATE)
-            printf("Using fused dual update kernel.\n");
-        else
-            printf("Using cuSPARSE dual update kernel.\n");
+    state->primal_update_algorithm = CUSPARSE_UPDATE;
+    state->dual_update_algorithm = CUSPARSE_UPDATE;
+
+    if (params->verbose) {
+        printf("[Auto-Tuning] Strategy: FIXED CUSPARSE\n");
+        printf("  Primal: cuSPARSE (Forced)\n");
+        printf("  Dual  : cuSPARSE (Forced)\n");
     }
 }
+
+static void fix_fused_decide_fused_update_usage(pdhg_solver_state_t *state,
+                                                   const pdhg_parameters_t *params)
+{
+    state->primal_update_algorithm = FUSED_UPDATE;
+    state->dual_update_algorithm = FUSED_UPDATE;
+
+    if (params->verbose) {
+        printf("[Auto-Tuning] Strategy: FIXED FUSED\n");
+        printf("  Primal: FUSED (Forced)\n");
+        printf("  Dual  : FUSED (Forced)\n");
+    }
+}
+
+static void reset_solver_state_after_benchmark(pdhg_solver_state_t *state) {
+
+    CUDA_CHECK(cudaMemcpy(state->current_primal_solution, state->initial_primal_solution, 
+                          state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution, state->initial_primal_solution, 
+                          state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->reflected_primal_solution, state->initial_primal_solution, 
+                          state->num_variables * sizeof(double), cudaMemcpyDeviceToDevice));
+    
+    CUDA_CHECK(cudaMemcpy(state->current_dual_solution, state->initial_dual_solution, 
+                          state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution, state->initial_dual_solution, 
+                          state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->reflected_dual_solution, state->initial_dual_solution, 
+                          state->num_constraints * sizeof(double), cudaMemcpyDeviceToDevice));
+}
+
+
+static void heur_decide_fused_update_usage(pdhg_solver_state_t *state,
+                                           const pdhg_parameters_t *params)
+{
+    // Heuristic: based on Non-Zeros (NNZ) and Density
+    int n_cons = state->num_constraints;
+    int n_vars = state->num_variables;
+    
+    int max_nnz_A_row = calculate_max_nnz_row(n_cons, state->constraint_matrix->row_ptr);
+    int max_nnz_At_row = calculate_max_nnz_row(n_vars, state->constraint_matrix_t->row_ptr);
+    
+    int fusion_nnz_threshold = 100;
+    double fusion_density_threshold = 0.01;
+    
+    int primal_threshold = fmin(fusion_nnz_threshold, (int)(fusion_density_threshold * n_cons));
+    int dual_threshold = fmin(fusion_nnz_threshold, (int)(fusion_density_threshold * n_vars));
+
+    // Dual Update Uses Matrix A
+    if (max_nnz_A_row > dual_threshold) state->dual_update_algorithm = CUSPARSE_UPDATE;
+    else state->dual_update_algorithm = FUSED_UPDATE;
+
+    // Primal Update Uses Matrix A^T
+    if (max_nnz_At_row > primal_threshold) state->primal_update_algorithm = CUSPARSE_UPDATE;
+    else state->primal_update_algorithm = FUSED_UPDATE;
+
+    if (params->verbose) {
+        printf("[Auto-Tuning] Strategy: HEURISTIC\n");
+        printf("  Primal: %s (Threshold: %d, MaxNNZ: %d)\n", 
+            (state->primal_update_algorithm == FUSED_UPDATE ? "FUSED" : "cuSPARSE"), primal_threshold, max_nnz_At_row);
+        printf("  Dual  : %s (Threshold: %d, MaxNNZ: %d)\n", 
+            (state->dual_update_algorithm == FUSED_UPDATE ? "FUSED" : "cuSPARSE"), dual_threshold, max_nnz_A_row);
+    }
+}
+
+static void bench_decide_fused_update_usage(pdhg_solver_state_t *state,
+                                            const pdhg_parameters_t *params)
+{
+    if (params->verbose) printf("[Auto-Tuning] Strategy: BENCHMARK (Running tests...)\n");
+
+    const int WARMUP = 5;
+    const int ITER = 10;
+    float t_fused, t_cusparse;
+    
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+
+
+    state->primal_update_algorithm = FUSED_UPDATE;
+    for(int i=0; i<WARMUP; i++) compute_next_pdhg_primal_solution(state);
+    CUDA_CHECK(cudaEventRecord(start, 0));
+    for(int i=0; i<ITER; i++) compute_next_pdhg_primal_solution(state);
+    CUDA_CHECK(cudaEventRecord(stop, 0));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&t_fused, start, stop));
+    
+    state->primal_update_algorithm = CUSPARSE_UPDATE;
+    for(int i=0; i<WARMUP; i++) compute_next_pdhg_primal_solution(state);
+    CUDA_CHECK(cudaEventRecord(start, 0));
+    for(int i=0; i<ITER; i++) compute_next_pdhg_primal_solution(state);
+    CUDA_CHECK(cudaEventRecord(stop, 0));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&t_cusparse, start, stop));
+
+    if (t_fused <= t_cusparse) {
+        state->primal_update_algorithm = FUSED_UPDATE;
+        if (params->verbose) printf("  Primal: Selected FUSED (%.3f ms) < cuSPARSE (%.3f ms)\n", t_fused, t_cusparse);
+    } else {
+        state->primal_update_algorithm = CUSPARSE_UPDATE;
+        if (params->verbose) printf("  Primal: Selected cuSPARSE (%.3f ms) < FUSED (%.3f ms)\n", t_cusparse, t_fused);
+    }
+
+
+    state->dual_update_algorithm = FUSED_UPDATE;
+    for(int i=0; i<WARMUP; i++) compute_next_pdhg_dual_solution(state);
+    CUDA_CHECK(cudaEventRecord(start, 0));
+    for(int i=0; i<ITER; i++) compute_next_pdhg_dual_solution(state);
+    CUDA_CHECK(cudaEventRecord(stop, 0));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&t_fused, start, stop));
+    
+    state->dual_update_algorithm = CUSPARSE_UPDATE;
+    for(int i=0; i<WARMUP; i++) compute_next_pdhg_dual_solution(state);
+    CUDA_CHECK(cudaEventRecord(start, 0));
+    for(int i=0; i<ITER; i++) compute_next_pdhg_dual_solution(state);
+    CUDA_CHECK(cudaEventRecord(stop, 0));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+    CUDA_CHECK(cudaEventElapsedTime(&t_cusparse, start, stop));
+
+    if (t_fused <= t_cusparse) {
+        state->dual_update_algorithm = FUSED_UPDATE;
+        if (params->verbose) printf("  Dual  : Selected FUSED (%.3f ms) < cuSPARSE (%.3f ms)\n", t_fused, t_cusparse);
+    } else {
+        state->dual_update_algorithm = CUSPARSE_UPDATE;
+        if (params->verbose) printf("  Dual  : Selected cuSPARSE (%.3f ms) < FUSED (%.3f ms)\n", t_cusparse, t_fused);
+    }
+
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
+
+    reset_solver_state_after_benchmark(state);
+}
+
+static void decide_fused_update_usage(pdhg_solver_state_t *state,
+                                      const pdhg_parameters_t *params)
+{
+    switch (params->tuning_method) 
+    {
+        case PDHG_TUNING_BENCHMARK:
+            bench_decide_fused_update_usage(state, params);
+            break;
+            
+        case PDHG_CUSPARSE_FIX:
+            fix_cusparse_decide_fused_update_usage(state, params);
+            break;
+            
+        case PDHG_FUSED_FIX:
+            fix_fused_decide_fused_update_usage(state, params);
+            break;
+
+        case PDHG_TUNING_HEURISTIC:
+        default:
+            heur_decide_fused_update_usage(state, params);
+            break;
+    }
+}
+
 static pdhg_solver_state_t *initialize_primal_feas_polish_state(
     const pdhg_solver_state_t *original_state)
 {

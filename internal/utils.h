@@ -104,6 +104,8 @@ extern "C"
         bool verbose,
         termination_reason_t termination_reason);
 
+    void print_table_head(const pdhg_parameters_t *params);
+
     void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose);
 
     const char *termination_reason_to_string(termination_reason_t reason);

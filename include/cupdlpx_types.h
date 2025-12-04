@@ -77,6 +77,14 @@ extern "C"
 		int iteration_limit;
 	} termination_criteria_t;
 
+
+	typedef enum {
+		PDHG_TUNING_HEURISTIC,
+		PDHG_TUNING_BENCHMARK,
+		PDHG_CUSPARSE_FIX,
+		PDHG_FUSED_FIX,
+	} pdhg_tuning_method_t;
+
 	typedef struct
 	{
 		int l_inf_ruiz_iterations;
@@ -89,6 +97,7 @@ extern "C"
 		restart_parameters_t restart_params;
 		double reflection_coefficient;
 		bool feasibility_polishing;
+		pdhg_tuning_method_t tuning_method;
 	} pdhg_parameters_t;
 
 	typedef struct
