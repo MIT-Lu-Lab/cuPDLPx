@@ -1015,25 +1015,30 @@ __global__ void fused_compute_next_pdhg_primal_solution_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
     {
-        //Compute dual product
         double sum = 0.0;
+        double c = 0.0; 
+
         int row_start = matAt_row_ptr[i];
         int row_end = matAt_row_ptr[i + 1];
+        
         for (int j = row_start; j < row_end; ++j)
         {
             int col = matAt_col_ind[j];
             double val = matAt_val[j];
-            sum += val * __ldg(&dual_solution[col]); 
+
+            double y = fma(val, __ldg(&dual_solution[col]), -c);
+            
+            double t = sum + y;
+            c = (t - sum) - y;
+            sum = t;
         }
         double dual_prod = sum;
 
-        //Compute PDHG primal solution
         double temp = current_primal[i] - step_size * (objective[i] - dual_prod);
         double temp_proj = fmax(var_lb[i], fmin(temp, var_ub[i]));
         reflected_primal[i] = 2.0 * temp_proj - current_primal[i];
         dual_product[i] = dual_prod;
     }
-    return;
 }
 
 __global__ void fused_compute_next_pdhg_primal_solution_major_kernel(
@@ -1056,19 +1061,25 @@ __global__ void fused_compute_next_pdhg_primal_solution_major_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
     {
-        //Compute dual product
         double sum = 0.0;
+        double c = 0.0; 
+
         int row_start = matAt_row_ptr[i];
         int row_end = matAt_row_ptr[i + 1];
+        
         for (int j = row_start; j < row_end; ++j)
         {
             int col = matAt_col_ind[j];
             double val = matAt_val[j];
-            sum += val * __ldg(&dual_solution[col]);
+            
+            double y = fma(val, __ldg(&dual_solution[col]), -c);
+            
+            double t = sum + y;
+            c = (t - sum) - y;
+            sum = t;
         }
         double dual_prod = sum;
 
-        //Compute PDHG primal solution
         double temp = current_primal[i] - step_size * (objective[i] - dual_prod);
         double temp_proj = fmax(var_lb[i], fmin(temp, var_ub[i]));
         reflected_primal[i] = 2.0 * temp_proj - current_primal[i];
@@ -1078,7 +1089,49 @@ __global__ void fused_compute_next_pdhg_primal_solution_major_kernel(
         pdhg_primal[i] = temp_proj;
         dual_product[i] = dual_prod;
     }
-    return;
+}
+
+__global__ void fused_compute_next_pdhg_dual_solution_kernel(
+    const int * __restrict__ matA_row_ptr, 
+    const int * __restrict__ matA_col_ind, 
+    const double * __restrict__ matA_val, 
+    const double * __restrict__ primal_solution,
+    double * __restrict__ primal_product,
+    const double * __restrict__ current_dual, 
+    double * __restrict__ reflected_dual, 
+    const double * __restrict__ const_lb, 
+    const double * __restrict__ const_ub, 
+    double step_size,    
+    double inv_step_size, 
+    int n_cons)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_cons)
+    {
+        double sum = 0.0;
+        double c = 0.0; 
+
+        int row_start = matA_row_ptr[i];
+        int row_end = matA_row_ptr[i + 1];
+        
+        for (int j = row_start; j < row_end; ++j)
+        {
+            int col = matA_col_ind[j];
+            double val = matA_val[j];
+            
+            double y = fma(val, __ldg(&primal_solution[col]), -c);
+            
+            double t = sum + y;
+            c = (t - sum) - y;
+            sum = t;
+        }
+        double primal_prod = sum;
+
+        double temp = current_dual[i] * inv_step_size - primal_prod;
+        double temp_proj = fmax(-const_ub[i], fmin(temp, -const_lb[i]));
+        reflected_dual[i] = 2.0 * (temp - temp_proj) * step_size - current_dual[i];
+        primal_product[i] = primal_prod;
+    }
 }
 
 __global__ void fused_compute_next_pdhg_dual_solution_major_kernel(
@@ -1099,26 +1152,33 @@ __global__ void fused_compute_next_pdhg_dual_solution_major_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_cons)
     {
-        //Compute primal product
         double sum = 0.0;
+        double c = 0.0;
+
         int row_start = matA_row_ptr[i];
         int row_end = matA_row_ptr[i + 1];
+        
         for (int j = row_start; j < row_end; ++j)
         {
             int col = matA_col_ind[j];
             double val = matA_val[j];
-            sum += val * __ldg(&primal_solution[col]);
+            
+            double y = fma(val, __ldg(&primal_solution[col]), -c);
+            
+            double t = sum + y;
+            c = (t - sum) - y;
+            sum = t;
         }
         double primal_prod = sum;
-        //Compute PDHG dual solution
+
         double temp = current_dual[i]* inv_step_size - primal_prod;
         double temp_proj = fmax(-const_ub[i], fmin(temp, -const_lb[i]));
         pdhg_dual[i] = (temp - temp_proj) * step_size;
         reflected_dual[i] = 2.0 * pdhg_dual[i] - current_dual[i];
         primal_product[i] = primal_prod;
     }
-    return;
 }
+
 //Feasibility Polishing
 void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
 {
@@ -1228,43 +1288,6 @@ void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_stat
 
         state->inner_count++;
         state->total_count++;
-    }
-    return;
-}
-
-__global__ void fused_compute_next_pdhg_dual_solution_kernel(
-    const int * __restrict__ matA_row_ptr, 
-    const int * __restrict__ matA_col_ind, 
-    const double * __restrict__ matA_val, 
-    const double * __restrict__ primal_solution,
-    double * __restrict__ primal_product,
-    const double * __restrict__ current_dual, 
-    double * __restrict__ reflected_dual, 
-    const double * __restrict__ const_lb, 
-    const double * __restrict__ const_ub, 
-    double step_size,    
-    double inv_step_size, 
-    int n_cons)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_cons)
-    {
-        //Compute primal product
-        double sum = 0.0;
-        int row_start = matA_row_ptr[i];
-        int row_end = matA_row_ptr[i + 1];
-        for (int j = row_start; j < row_end; ++j)
-        {
-            int col = matA_col_ind[j];
-            double val = matA_val[j];
-            sum += val * __ldg(&primal_solution[col]);
-        }
-        double primal_prod = sum;
-        //Compute PDHG dual solution
-        double temp = current_dual[i] * inv_step_size - primal_prod;
-        double temp_proj = fmax(-const_ub[i], fmin(temp, -const_lb[i]));
-        reflected_dual[i] = 2.0 * (temp - temp_proj) * step_size - current_dual[i];
-        primal_product[i] = primal_prod;
     }
     return;
 }
