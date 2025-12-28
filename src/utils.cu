@@ -408,6 +408,10 @@ void print_initial_info(const pdhg_parameters_t *params,
            params->termination_criteria.eps_feasible_relative);
     printf("  eps_infeas_detect  : %.1e\n",
            params->termination_criteria.eps_infeasible);
+    if (params->optimality_norm != default_params.optimality_norm) {
+        printf("  optimality_norm    : %s\n",
+               params->optimality_norm == NORM_TYPE_L_INF ? "L_inf" : "L2");
+    }
 
     PRINT_DIFF_INT("l_inf_ruiz_iter",
                    params->l_inf_ruiz_iterations, 
@@ -681,7 +685,7 @@ static double get_vector_sum(cublasHandle_t handle, int n, double *ones_d,
     return sum;
 }
 
-void compute_residual(pdhg_solver_state_t *state)
+void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 {
     cusparseDnVecSetValues(state->vec_primal_sol, state->pdhg_primal_solution);
     cusparseDnVecSetValues(state->vec_dual_sol, state->pdhg_dual_solution);
@@ -708,7 +712,7 @@ void compute_residual(pdhg_solver_state_t *state)
         state->constraint_upper_bound_finite_val, state->num_constraints,
         state->num_variables);
 
-    if (state->optimality_norm == NORM_TYPE_L_INF) {
+    if (optimality_norm == NORM_TYPE_L_INF) {
         state->absolute_primal_residual = get_vector_inf_norm(state->blas_handle, 
                                           state->num_constraints, state->primal_residual);
     } else {
@@ -719,7 +723,7 @@ void compute_residual(pdhg_solver_state_t *state)
 
     state->absolute_primal_residual /= state->constraint_bound_rescaling;
 
-    if (state->optimality_norm == NORM_TYPE_L_INF) {
+    if (optimality_norm == NORM_TYPE_L_INF) {
         state->absolute_dual_residual = get_vector_inf_norm(state->blas_handle, 
                                         state->num_variables, state->dual_residual);
     } else {
@@ -1235,7 +1239,7 @@ __global__ void compute_dual_feas_polish_residual_kerenl(
     }
 }
 
-void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state)
+void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, norm_type_t optimality_norm)
 {
     cusparseDnVecSetValues(state->vec_primal_sol, state->pdhg_primal_solution);
     cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product);
@@ -1247,7 +1251,7 @@ void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_
         state->constraint_upper_bound, state->constraint_rescaling,
         state->num_constraints);
 
-    if (state->optimality_norm == NORM_TYPE_L_INF) {
+    if (optimality_norm == NORM_TYPE_L_INF) {
         state->absolute_primal_residual = get_vector_inf_norm(state->blas_handle, 
                                           state->num_constraints, state->primal_residual);
     } else {
@@ -1264,7 +1268,7 @@ void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_
     state->primal_objective_value = state->primal_objective_value / (state->constraint_bound_rescaling * state->objective_vector_rescaling) + state->objective_constant;
 }
 
-void compute_dual_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state)
+void compute_dual_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, norm_type_t optimality_norm)
 {
     cusparseDnVecSetValues(state->vec_dual_sol, state->pdhg_dual_solution);
     cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product);
@@ -1282,7 +1286,7 @@ void compute_dual_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_so
         ori_state->constraint_upper_bound_finite_val,
         state->num_variables, state->num_constraints);
 
-    if (state->optimality_norm == NORM_TYPE_L_INF) {
+    if (optimality_norm == NORM_TYPE_L_INF) {
         state->absolute_dual_residual = get_vector_inf_norm(state->blas_handle, 
                                         state->num_variables, state->dual_residual);
     } else {

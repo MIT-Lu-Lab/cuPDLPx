@@ -125,7 +125,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
         if ((state->is_this_major_iteration || state->total_count == 0) ||
             (state->total_count % get_print_frequency(state->total_count) == 0))
         {
-            compute_residual(state);
+            compute_residual(state, params->optimality_norm);
             if (state->is_this_major_iteration &&
                 state->total_count < 3 * params->termination_evaluation_frequency)
             {
@@ -176,7 +176,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
     if (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
         state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
-        compute_residual(state);
+        compute_residual(state, params->optimality_norm);
         display_iteration_stats(state, params->verbose);
     }
 
@@ -223,8 +223,6 @@ initialize_solver_state(const pdhg_parameters_t *params,
 {
     pdhg_solver_state_t *state =
         (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
-
-    state->optimality_norm = params ? params->optimality_norm : NORM_TYPE_L2;
 
     int n_vars = working_problem->num_variables;
     int n_cons = working_problem->num_constraints;
@@ -415,7 +413,7 @@ initialize_solver_state(const pdhg_parameters_t *params,
 
     for (int i = 0; i < n_vars; ++i)
     {
-        if (state->optimality_norm == NORM_TYPE_L_INF) {
+        if (params->optimality_norm == NORM_TYPE_L_INF) {
             val = fabs(working_problem->objective_vector[i]);
             if (val > max_val) max_val = val;
         } else {
@@ -423,7 +421,7 @@ initialize_solver_state(const pdhg_parameters_t *params,
         }
     }
 
-    if (state->optimality_norm == NORM_TYPE_L_INF) {
+    if (params->optimality_norm == NORM_TYPE_L_INF) {
         state->objective_vector_norm = max_val;
     } else {
         state->objective_vector_norm = sqrt(sum_of_squares);
@@ -438,7 +436,7 @@ initialize_solver_state(const pdhg_parameters_t *params,
         double lower = working_problem->constraint_lower_bound[i];
         double upper = working_problem->constraint_upper_bound[i];
 
-        if (state->optimality_norm == NORM_TYPE_L_INF) {
+        if (params->optimality_norm == NORM_TYPE_L_INF) {
             if (isfinite(lower) && (lower != upper)) {
                 val = fabs(lower);
                 if (val > max_val) max_val = val;
@@ -457,7 +455,7 @@ initialize_solver_state(const pdhg_parameters_t *params,
         }
     }
 
-    if (state->optimality_norm == NORM_TYPE_L_INF) {
+    if (params->optimality_norm == NORM_TYPE_L_INF) {
         state->constraint_bound_norm = max_val;
     } else {
         state->constraint_bound_norm = sqrt(sum_of_squares);
@@ -1158,7 +1156,7 @@ void primal_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_stat
     {
         if ((state->is_this_major_iteration || state->total_count == 0) || (state->total_count % get_print_frequency(state->total_count) == 0))
         {
-            compute_primal_feas_polish_residual(state, ori_state);
+            compute_primal_feas_polish_residual(state, ori_state, params->optimality_norm);
 
             state->cumulative_time_sec = (double)(clock() - start_time) / CLOCKS_PER_SEC;
 
@@ -1204,7 +1202,7 @@ void dual_feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_
     {
         if ((state->is_this_major_iteration || state->total_count == 0) || (state->total_count % get_print_frequency(state->total_count) == 0))
         {
-            compute_dual_feas_polish_residual(state, ori_state);
+            compute_dual_feas_polish_residual(state, ori_state, params->optimality_norm);
 
             state->cumulative_time_sec = (double)(clock() - start_time) / CLOCKS_PER_SEC;
 

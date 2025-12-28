@@ -107,7 +107,7 @@ extern "C"
 
     int get_print_frequency(int iter);
 
-    void compute_residual(pdhg_solver_state_t *state);
+    void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm);
 
     void compute_infeasibility_information(pdhg_solver_state_t *state);
 
@@ -133,9 +133,9 @@ extern "C"
 
     void pdhg_feas_polish_final_log(const pdhg_solver_state_t *primal_state, const pdhg_solver_state_t *dual_state, bool verbose);
 
-    void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
+    void compute_primal_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, norm_type_t optimality_norm);
 
-    void compute_dual_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state);
+    void compute_dual_feas_polish_residual(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, norm_type_t optimality_norm);
 
     void set_default_parameters(pdhg_parameters_t *params);
 

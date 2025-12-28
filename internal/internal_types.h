@@ -103,7 +103,6 @@ typedef struct
 	double initial_fixed_point_error;
 	double last_trial_fixed_point_error;
 	int inner_count;
-	norm_type_t optimality_norm;
 
 	cusparseHandle_t sparse_handle;
 	cublasHandle_t blas_handle;
