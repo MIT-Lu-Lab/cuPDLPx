@@ -31,6 +31,6 @@ install(TARGETS PSLP
 
 install(TARGETS _cupdlpx_core
   LIBRARY DESTINATION cupdlpx
-  RUNTIME DESTINATION cupdlp
+  RUNTIME DESTINATION cupdlpx
   ARCHIVE DESTINATION cupdlpx
 )
