@@ -26,7 +26,7 @@ extern "C"
 
     const char *get_presolve_status_str(enum PresolveStatus_ status);
 
-    void pslp_postsolve(cupdlpx_presolve_info_t *info,
+    void pslp_postsolve(const cupdlpx_presolve_info_t *info,
                         cupdlpx_result_t *reduced_result,
                         const lp_problem_t *original_prob);
 

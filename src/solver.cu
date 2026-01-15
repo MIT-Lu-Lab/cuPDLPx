@@ -197,6 +197,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params,
 
     pdhg_final_log(result, params);
     pdhg_solver_state_free(state);
+    CUDA_CHECK(cudaGetLastError());
     return result;
 }
 
