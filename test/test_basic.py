@@ -23,7 +23,7 @@ def test_smoke_optimize_runs(base_lp_data):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
 
@@ -42,7 +42,7 @@ def test_minimize_solution_correct(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status
@@ -79,7 +79,7 @@ def test_maximize_solution_correct(base_lp_data, atol):
     except Exception as e:
         print(f"cuPDLPx: failed to set model sense to MAXIMIZE.")
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status

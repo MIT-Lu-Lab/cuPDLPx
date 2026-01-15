@@ -35,7 +35,7 @@ def test_warm_start(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # cold start baseline
     model.optimize()
     assert hasattr(model, "Status"), "Model.Status not exposed."
@@ -82,7 +82,7 @@ def test_warm_start_primal(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # set warm start values
     model.setWarmStart(primal=[1, 2])
     # optimize with warm start
@@ -118,7 +118,7 @@ def test_warm_start_dual(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # set warm start values
     model.setWarmStart(dual=[1, -1, 0])
     # optimize with warm start
@@ -145,7 +145,7 @@ def test_clear_warm_start(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # set warm start values
     model.setWarmStart(primal=[1, 2], dual=[1, -1, 0])
     # clear warm start values
@@ -175,10 +175,10 @@ def test_warm_start_wrong_size_fallback(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # set warm start values with wrong size
     with pytest.warns(RuntimeWarning):
-        model.setWarmStart(primal=[1], dual=[1, 1])  # 尺寸不匹配
+        model.setWarmStart(primal=[1], dual=[1, 1]) # wrong sizes
     # optimize
     model.optimize()
     # check status

@@ -33,7 +33,7 @@ def test_random_sparse_lp(atol):
     ub = None
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status

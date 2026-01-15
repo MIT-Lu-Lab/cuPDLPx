@@ -25,7 +25,7 @@ def test_csr(base_lp_data, atol):
     A = sp.csr_matrix(A) # convert to CSR
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status
@@ -51,7 +51,7 @@ def test_csc(base_lp_data, atol):
     A = sp.csc_matrix(A) # convert to CSC
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status
@@ -77,7 +77,7 @@ def test_coo(base_lp_data, atol):
     A = sp.coo_matrix(A) # convert to COO
     model = Model(c, A, l, u, lb, ub)
     # turn off output
-    model.setParams(OutputFlag=False)
+    model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status
