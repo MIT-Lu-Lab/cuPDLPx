@@ -42,6 +42,7 @@ def test_feasibility_polishing():
 
     # 2. Enable polishing with tight tolerance
     m.setParams(OutputFlag=False,
+                Presolve=False,
                 FeasibilityPolishing=True,
                 FeasibilityPolishingTol=1e-10)
 
