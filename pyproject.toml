@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "cupdlpx"
-version = "0.2.5"
+version = "0.2.7"
 description = "Python bindings for cuPDLPx (GPU-accelerated first-order LP solver)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -22,7 +22,17 @@ build-dir = "build/{wheel_tag}"
 cmake.version = ">=3.21"
 cmake.build-type = "Release"
 wheel.packages = ["python/cupdlpx"]
-sdist.include = ["tests/**", "pyproject.toml", "README.md", "LICENSE"]
+sdist.include = [
+  "CMakeLists.txt",
+  "src/**",
+  "include/**",
+  "internal/**",
+  "python_bindings/**",
+  "python/**",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+]
 
 [tool.scikit-build.cmake.define]
 CMAKE_CUDA_ARCHITECTURES = "all"
