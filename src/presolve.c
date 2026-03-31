@@ -30,7 +30,7 @@ const char *get_presolve_status_str(enum PresolveStatus_ status)
     }
 }
 
-lp_problem_t *convert_pslp_to_cupdlpx(PresolvedProblem *reduced_prob)
+lp_problem_t *convert_pslp_to_cupdlpx(PresolvedProblem *reduced_prob, const lp_problem_t *original_prob)
 {
 
     lp_problem_t *cupdlpx_prob = (lp_problem_t *)safe_malloc(sizeof(lp_problem_t));
@@ -38,7 +38,7 @@ lp_problem_t *convert_pslp_to_cupdlpx(PresolvedProblem *reduced_prob)
     cupdlpx_prob->primal_start = NULL;
     cupdlpx_prob->dual_start = NULL;
 
-    cupdlpx_prob->objective_constant = reduced_prob->obj_offset;
+    cupdlpx_prob->objective_constant = original_prob->objective_constant + reduced_prob->obj_offset;
     cupdlpx_prob->objective_vector = reduced_prob->c;
 
     cupdlpx_prob->constraint_lower_bound = reduced_prob->lhs;
@@ -114,7 +114,7 @@ cupdlpx_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, const 
     else
     {
         info->problem_solved_during_presolve = false;
-        info->reduced_problem = convert_pslp_to_cupdlpx(info->presolver->reduced_prob);
+        info->reduced_problem = convert_pslp_to_cupdlpx(info->presolver->reduced_prob, original_prob);
     }
     return info;
 }
