@@ -204,11 +204,7 @@ static void bound_objective_rescaling(pdhg_solver_state_t *state, rescale_info_t
     cublasGetPointerMode(state->blas_handle, &old_mode);
     cublasSetPointerMode(state->blas_handle, CUBLAS_POINTER_MODE_HOST);
 
-    CUBLAS_CHECK(cublasDasum(state->blas_handle, 
-                             num_constraints, 
-                             contrib_d, 
-                             1, 
-                             &bnd_norm_sq_h));
+    CUBLAS_CHECK(cublasDasum(state->blas_handle, num_constraints, contrib_d, 1, &bnd_norm_sq_h));
 
     cublasSetPointerMode(state->blas_handle, old_mode);
 
