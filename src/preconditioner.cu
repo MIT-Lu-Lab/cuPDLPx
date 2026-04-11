@@ -198,19 +198,22 @@ static void bound_objective_rescaling(pdhg_solver_state_t *state, rescale_info_t
     compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_lower_bound, state->constraint_upper_bound, num_constraints, contrib_d);
 
-    double *bnd_norm_sq_d = nullptr;
-    CUDA_CHECK(cudaMalloc(&bnd_norm_sq_d, sizeof(double)));
-    void *temp_storage = nullptr;
-    size_t temp_bytes = 0;
-    CUDA_CHECK(cub::DeviceReduce::Sum(temp_storage, temp_bytes, contrib_d, bnd_norm_sq_d, num_constraints));
-    CUDA_CHECK(cudaMalloc(&temp_storage, temp_bytes));
-    CUDA_CHECK(cub::DeviceReduce::Sum(temp_storage, temp_bytes, contrib_d, bnd_norm_sq_d, num_constraints));
-    CUDA_CHECK(cudaFree(contrib_d));
-    CUDA_CHECK(cudaFree(temp_storage));
-
     double bnd_norm_sq_h = 0.0;
-    CUDA_CHECK(cudaMemcpy(&bnd_norm_sq_h, bnd_norm_sq_d, sizeof(double), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaFree(bnd_norm_sq_d));
+
+    cublasPointerMode_t old_mode;
+    cublasGetPointerMode(state->blas_handle, &old_mode);
+    cublasSetPointerMode(state->blas_handle, CUBLAS_POINTER_MODE_HOST);
+
+    CUBLAS_CHECK(cublasDasum(state->blas_handle, 
+                             num_constraints, 
+                             contrib_d, 
+                             1, 
+                             &bnd_norm_sq_h));
+
+    cublasSetPointerMode(state->blas_handle, old_mode);
+
+    CUDA_CHECK(cudaFree(contrib_d));
+
     double bnd_norm = sqrt(bnd_norm_sq_h);
 
     double obj_norm = 0.0;
