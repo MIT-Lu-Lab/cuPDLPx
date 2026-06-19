@@ -16,9 +16,15 @@ limitations under the License.
 
 #include "preconditioner.h"
 #include "utils.h"
+
+// CUB / hipCUB - cuda_to_hip.h aliases cub namespace to hipcub on HIP builds
+#if defined(USE_HIP) || defined(__HIP_PLATFORM_AMD__)
+#include <hipcub/hipcub.hpp>
+#else
 #include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
+#endif
 #include <math.h>
 #include <stdio.h>
 #include <time.h>

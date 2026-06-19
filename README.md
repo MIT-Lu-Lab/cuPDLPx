@@ -26,12 +26,14 @@ Our work is presented in two papers:
 ## Installation
 
 ### Requirements
-* **GPU:** NVIDIA GPU with CUDA 12.4+.
-* **Build Tools:** CMake (≥ 3.20), GCC, NVCC.
+* **GPU:** NVIDIA GPU with CUDA 12.4+, or AMD GPU with ROCm 7.2+.
+* **Build Tools:** CMake (≥ 3.20), GCC, and NVCC (CUDA) or hipcc (ROCm).
 
 > **SpMV backend** is selected automatically at compile time based on cuSPARSE version:
 > - `cusparseSpMV` — CUDA 12.4 – 13.1 (cuSPARSE < 12.7.3)
 > - `cusparseSpMVOp` — CUDA 13.1 Update 1+ (cuSPARSE ≥ 12.7.3)
+>
+> On AMD GPUs the solver uses the `hipsparseSpMV` backend via hipSPARSE.
 
 ### Build from Source
 Clone the repository and compile the project using CMake.
@@ -42,6 +44,21 @@ cmake -B build
 cmake --build build --clean-first
 ```
 This will create the solver binary at `./build/cupdlpx`.
+
+#### Building for AMD GPUs (ROCm/HIP)
+To target AMD GPUs, configure with `-DUSE_HIP=ON` and select the GPU
+architecture with `-DCMAKE_HIP_ARCHITECTURES`. The CUDA sources are compiled
+as HIP and the cuBLAS/cuSPARSE/CUB calls are mapped to hipBLAS/hipSPARSE/hipCUB.
+```bash
+cmake -B build -DUSE_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx90a -DCMAKE_PREFIX_PATH=/opt/rocm
+cmake --build build --clean-first
+```
+Set `CMAKE_HIP_ARCHITECTURES` to match your GPU (for example `gfx90a` for
+MI200, `gfx1100` for RDNA3 desktop, or `gfx1201` for RDNA4). If the ROCm
+install is not on CMake's default search path, point `-DCMAKE_PREFIX_PATH` at
+it (e.g. `/opt/rocm`) so `find_package` can locate hip, hipBLAS, hipSPARSE,
+and hipCUB. The resulting `./build/cupdlpx` binary is used exactly as in the
+CUDA build.
 
 #### Verifying the Installation
 Run a small test problem to confirm that the solver was built correctly.

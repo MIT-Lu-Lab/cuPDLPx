@@ -3,8 +3,15 @@
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.20)
 
+# HIP/ROCm support option (must be set before project() to influence language detection)
+option(USE_HIP "Build with HIP for AMD GPUs" OFF)
+
 # Project config
-project(cupdlpx LANGUAGES C CXX CUDA)
+if(USE_HIP)
+  project(cupdlpx LANGUAGES C CXX HIP)
+else()
+  project(cupdlpx LANGUAGES C CXX CUDA)
+endif()
 
 set(CUPDLPX_VERSION_MAJOR 0)
 set(CUPDLPX_VERSION_MINOR 2)
@@ -32,8 +39,16 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90)
+if(USE_HIP)
+  # HIP architecture configuration
+  # Default to gfx90a if not specified; can override with -DCMAKE_HIP_ARCHITECTURES=gfx1100, etc.
+  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
+    set(CMAKE_HIP_ARCHITECTURES "gfx90a")
+  endif()
+else()
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90)
+  endif()
 endif()
 
 # -----------------------------------------------------------------------------
@@ -61,9 +76,14 @@ else()
     endif()
 endif()
 
-# CUDA standards and RDC
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+# CUDA/HIP standards and RDC
+if(USE_HIP)
+  set(CMAKE_HIP_STANDARD 17)
+  set(CMAKE_HIP_STANDARD_REQUIRED ON)
+else()
+  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
 
 # -----------------------------------------------------------------------------
 # CONTROL OPTIONS
@@ -85,7 +105,16 @@ endif()
 # -----------------------------------------------------------------------------
 # FIND DEPENDENCIES
 # -----------------------------------------------------------------------------
-find_package(CUDAToolkit REQUIRED)
+if(USE_HIP)
+  # Find ROCm/HIP libraries
+  find_package(hip REQUIRED)
+  find_package(hipblas REQUIRED)
+  find_package(hipsparse REQUIRED)
+  find_package(hipcub REQUIRED)
+  find_package(rocprim REQUIRED)
+else()
+  find_package(CUDAToolkit REQUIRED)
+endif()
 include(FetchContent)
 
 # 1. ZLIB Configuration
@@ -152,20 +181,40 @@ target_compile_definitions(cupdlpx_compile_flags INTERFACE PSLP_VERSION="${PSLP_
 file(GLOB C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
 file(GLOB CU_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
 list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/cli.c")
+if(WIN32)
+  # mps_parser.c is CLI-only; exclude it on Windows where strtok_r is unavailable
+  list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mps_parser.c")
+endif()
 
 set(CORE_INCLUDE_DIRS
   PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal
 )
 
-set(CORE_LINK_LIBS 
-  PUBLIC cupdlpx_compile_flags
-  PUBLIC CUDA::cudart
-  PUBLIC CUDA::cublas
-  PUBLIC CUDA::cusparse
-  PUBLIC ZLIB::ZLIB
-  PUBLIC PSLP
-)
+if(USE_HIP)
+  set(CORE_LINK_LIBS
+    PUBLIC cupdlpx_compile_flags
+    PUBLIC hip::device
+    PUBLIC roc::hipblas
+    PUBLIC roc::hipsparse
+    PUBLIC hip::hipcub
+    PUBLIC ZLIB::ZLIB
+    PUBLIC PSLP
+  )
+  # Mark .cu files as HIP language
+  set_source_files_properties(${CU_SOURCES} PROPERTIES LANGUAGE HIP)
+  # Define USE_HIP for the compat header
+  add_compile_definitions(USE_HIP)
+else()
+  set(CORE_LINK_LIBS
+    PUBLIC cupdlpx_compile_flags
+    PUBLIC CUDA::cudart
+    PUBLIC CUDA::cublas
+    PUBLIC CUDA::cusparse
+    PUBLIC ZLIB::ZLIB
+    PUBLIC PSLP
+  )
+endif()
 
 # 1. Core STATIC Library
 if(CUPDLPX_BUILD_STATIC_LIB)
@@ -174,9 +223,17 @@ if(CUPDLPX_BUILD_STATIC_LIB)
     target_link_libraries(cupdlpx_core ${CORE_LINK_LIBS})
     set_target_properties(cupdlpx_core PROPERTIES
       POSITION_INDEPENDENT_CODE ON
-      CUDA_SEPARABLE_COMPILATION ON
-      CUDA_RESOLVE_DEVICE_SYMBOLS ON
     )
+    if(USE_HIP)
+      set_target_properties(cupdlpx_core PROPERTIES
+        HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}"
+      )
+    else()
+      set_target_properties(cupdlpx_core PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+      )
+    endif()
 endif()
 
 # 2. Shared Library
@@ -187,9 +244,17 @@ if(CUPDLPX_BUILD_SHARED_LIB)
     set_target_properties(cupdlpx_shared PROPERTIES
         OUTPUT_NAME "cupdlpx"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    )
+    if(USE_HIP)
+      set_target_properties(cupdlpx_shared PROPERTIES
+        HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}"
+      )
+    else()
+      set_target_properties(cupdlpx_shared PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
-    )
+      )
+    endif()
 endif()
 
 # 3. CLI Executable
@@ -204,8 +269,12 @@ if(CUPDLPX_BUILD_CLI)
     set_target_properties(cupdlpx_cli PROPERTIES
         OUTPUT_NAME "cupdlpx"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-        CUDA_RESOLVE_DEVICE_SYMBOLS ON
     )
+    if(NOT USE_HIP)
+      set_target_properties(cupdlpx_cli PROPERTIES
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+      )
+    endif()
 endif()
 
 # 4. Tests
@@ -217,14 +286,18 @@ if(CUPDLPX_BUILD_TESTS)
     enable_testing()
     file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cu")
     foreach(TEST_SRC ${TEST_SOURCES})
-        get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE) 
+        get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)
         add_executable(${TEST_NAME} ${TEST_SRC})
         target_link_libraries(${TEST_NAME} PRIVATE cupdlpx_core)
         target_include_directories(${TEST_NAME} PRIVATE include internal)
         set_target_properties(${TEST_NAME} PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests"
-            CUDA_RESOLVE_DEVICE_SYMBOLS ON
         )
+        if(NOT USE_HIP)
+          set_target_properties(${TEST_NAME} PROPERTIES
+            CUDA_RESOLVE_DEVICE_SYMBOLS ON
+          )
+        endif()
         add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
     endforeach()
 endif()

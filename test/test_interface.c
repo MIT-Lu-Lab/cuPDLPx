@@ -120,7 +120,6 @@ int main()
     A_dense.m = m;
     A_dense.n = n;
     A_dense.fmt = matrix_dense;
-    A_dense.zero_tolerance = 0.0;
     A_dense.data.dense.A = &A[0][0];
 
     // A as a CSR matrix
@@ -133,7 +132,6 @@ int main()
     A_csr.m = m;
     A_csr.n = n;
     A_csr.fmt = matrix_csr;
-    A_csr.zero_tolerance = 0.0;
     A_csr.data.csr.nnz = 5;
     A_csr.data.csr.row_ptr = csr_row_ptr;
     A_csr.data.csr.col_ind = csr_col_ind;
@@ -149,7 +147,6 @@ int main()
     A_csc.m = m;
     A_csc.n = n;
     A_csc.fmt = matrix_csc;
-    A_csc.zero_tolerance = 0.0;
     A_csc.data.csc.nnz = 5;
     A_csc.data.csc.col_ptr = csc_col_ptr;
     A_csc.data.csc.row_ind = csc_row_ind;
@@ -165,7 +162,6 @@ int main()
     A_coo.m = m;
     A_coo.n = n;
     A_coo.fmt = matrix_coo;
-    A_coo.zero_tolerance = 0.0;
     A_coo.data.coo.nnz = 5;
     A_coo.data.coo.row_ind = coo_row_ind;
     A_coo.data.coo.col_ind = coo_col_ind;
@@ -225,6 +221,31 @@ int main()
     test_warm_start("Test 6: CSR Matrix", &A_csr, c, l, u);
     test_warm_start("Test 7: CSC Matrix", &A_csc, c, l, u);
     test_warm_start("Test 8: COO Matrix", &A_coo, c, l, u);
+
+    // Test 9: GPU solver path (presolve disabled) -- forces hipBLAS/hipSPARSE execution
+    printf("\n=== Test 9: CSR Matrix (presolve disabled, GPU solver) ===\n");
+    {
+        lp_problem_t *prob9 = create_lp_problem(c, &A_csr, l, u, NULL, NULL, NULL);
+        if (!prob9)
+        {
+            fprintf(stderr, "[test] create_lp_problem failed for Test 9.\n");
+            return 1;
+        }
+        pdhg_parameters_t params9;
+        set_default_parameters(&params9);
+        params9.presolve = false;
+        params9.verbose = true;
+        cupdlpx_result_t *res9 = solve_lp_problem(prob9, &params9);
+        lp_problem_free(prob9);
+        if (!res9)
+        {
+            fprintf(stderr, "[test] solve_lp_problem failed for Test 9.\n");
+            return 1;
+        }
+        print_vec("x", res9->primal_solution, res9->num_variables);
+        print_vec("y", res9->dual_solution, res9->num_constraints);
+        cupdlpx_result_free(res9);
+    }
 
     return 0;
 }

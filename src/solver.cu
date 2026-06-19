@@ -21,9 +21,13 @@ limitations under the License.
 #include "presolve.h"
 #include "solver.h"
 #include "utils.h"
+
+// CUDA/HIP headers - cuda_to_hip.h in utils.h handles the mapping
+#if !defined(USE_HIP) && !defined(__HIP_PLATFORM_AMD__)
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
+#endif
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>

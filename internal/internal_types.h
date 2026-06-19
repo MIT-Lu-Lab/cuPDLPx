@@ -17,9 +17,17 @@ limitations under the License.
 #pragma once
 
 #include "cupdlpx_types.h"
+
+// Include cuda_to_hip.h first to map CUDA -> HIP symbols when building for ROCm.
+#include "cuda_to_hip.h"
 #include "cusparse_compat.h"
+
+// On CUDA, include the standard headers; on HIP, cuda_to_hip.h already included them.
+#if !defined(USE_HIP) && !defined(__HIP_PLATFORM_AMD__)
 #include <cublas_v2.h>
 #include <cusparse.h>
+#endif
+
 #include <stdbool.h>
 #include <time.h>
 
