@@ -172,9 +172,14 @@ namespace cub = hipcub;
 #else // CUDA build
 
 // Standard CUDA headers
-#include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
+
+// cub is C++ only; C translation units (cli.c, cupdlpx.c, ...) reach this
+// header transitively and must not pull it in.
+#ifdef __cplusplus
+#include <cub/device/device_reduce.cuh>
+#endif
 
 #endif // USE_HIP
