@@ -434,7 +434,7 @@ lp_problem_t *read_mps_file(const char *filename)
         if (n_tokens == 0)
             continue;
 
-        if (n_tokens == 1 && isalpha(tokens[0][0]))
+        if (isalpha((unsigned char)tokens[0][0]))
         {
             MpsSection next_section = SEC_NONE;
             if (strcmp(tokens[0], "ROWS") == 0)
@@ -447,14 +447,20 @@ lp_problem_t *read_mps_file(const char *filename)
                 next_section = SEC_RANGES;
             else if (strcmp(tokens[0], "BOUNDS") == 0)
                 next_section = SEC_BOUNDS;
-            else if (strcmp(tokens[0], "OBJSENSE") == 0)
+            else if (strcmp(tokens[0], "OBJSENSE") == 0 || strcmp(tokens[0], "OBJSENS") == 0)
                 next_section = SEC_OBJSENSE;
             else if (strcmp(tokens[0], "ENDATA") == 0)
             {
                 next_section = SEC_ENDATA;
             }
 
-            if (next_section != SEC_NONE)
+            bool inline_max = next_section == SEC_OBJSENSE && n_tokens >= 2 &&
+                              (strcmp(tokens[1], "MAX") == 0 || strcmp(tokens[1], "MAXIMIZE") == 0);
+            bool inline_min = next_section == SEC_OBJSENSE && n_tokens >= 2 &&
+                              (strcmp(tokens[1], "MIN") == 0 || strcmp(tokens[1], "MINIMIZE") == 0);
+            bool is_header = next_section != SEC_NONE && (n_tokens == 1 || inline_max || inline_min);
+
+            if (is_header)
             {
                 if (current_section == SEC_ROWS && next_section != SEC_ROWS && !rows_finalized)
                 {
@@ -466,6 +472,12 @@ lp_problem_t *read_mps_file(const char *filename)
                 current_section = next_section;
                 if (current_section == SEC_ENDATA)
                     break;
+
+                if (inline_max)
+                    state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
+                else if (inline_min)
+                    state.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
+
                 continue;
             }
         }
@@ -473,9 +485,13 @@ lp_problem_t *read_mps_file(const char *filename)
         switch (current_section)
         {
             case SEC_OBJSENSE:
-                if (n_tokens > 0 && (strcmp(tokens[0], "MAX") == 0 || strcmp(tokens[0], "MAXIMIZE") == 0))
+                if (strcmp(tokens[0], "MAX") == 0 || strcmp(tokens[0], "MAXIMIZE") == 0)
                 {
                     state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
+                }
+                else if (strcmp(tokens[0], "MIN") == 0 || strcmp(tokens[0], "MINIMIZE") == 0)
+                {
+                    state.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
                 }
                 break;
             case SEC_ROWS:
