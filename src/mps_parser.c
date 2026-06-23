@@ -455,9 +455,9 @@ lp_problem_t *read_mps_file(const char *filename)
             }
 
             bool inline_max = next_section == SEC_OBJSENSE && n_tokens >= 2 &&
-                              (strcmp(tokens[1], "MAX") == 0 || strcmp(tokens[1], "MAXIMIZE") == 0);
+                (strcmp(tokens[1], "MAX") == 0 || strcmp(tokens[1], "MAXIMIZE") == 0);
             bool inline_min = next_section == SEC_OBJSENSE && n_tokens >= 2 &&
-                              (strcmp(tokens[1], "MIN") == 0 || strcmp(tokens[1], "MINIMIZE") == 0);
+                (strcmp(tokens[1], "MIN") == 0 || strcmp(tokens[1], "MINIMIZE") == 0);
             bool is_header = next_section != SEC_NONE && (n_tokens == 1 || inline_max || inline_min);
 
             if (is_header)
