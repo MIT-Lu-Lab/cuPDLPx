@@ -153,8 +153,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         working_problem = presolve_info->reduced_problem;
     }
 
-    pdhg_solver_state_t *state =
-        initialize_solver_state(working_problem, params, original_problem->objective_sense);
+    pdhg_solver_state_t *state = initialize_solver_state(working_problem, params, original_problem->objective_sense);
     display_iteration_stats(state, params->verbose);
 
     initialize_step_size_and_primal_weight(state, params);
