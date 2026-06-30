@@ -68,7 +68,9 @@ def test_maximize_solution_correct(base_lp_data, atol):
                x2 <= 2
       3*x1 + 2*x2 <= 8
            x1, x2 >= 0
-    Optimal solution: x* = (1.5, 1.75), y* = (-0.25, 0, -0.25), objective = 3.25
+    Optimal solution: x* = (1.5, 1.75), y* = (0.25, 0, 0.25), objective = 3.25
+    (duals are reported in the maximization sense: a binding <= constraint has a
+    nonnegative shadow price.)
     """
     # setup model
     c, A, l, u, lb, ub = base_lp_data
@@ -90,7 +92,7 @@ def test_maximize_solution_correct(base_lp_data, atol):
     assert np.allclose(model.X, [1.5, 1.75], atol=atol), f"Unexpected primal solution: {model.X}"
     # check dual solution
     assert hasattr(model, "Pi"), "Model.Pi (dual solution) not exposed."
-    assert np.allclose(model.Pi, [-0.25, 0, -0.25], atol=atol), f"Unexpected dual solution: {model.Pi}"
+    assert np.allclose(model.Pi, [0.25, 0, 0.25], atol=atol), f"Unexpected dual solution: {model.Pi}"
     # check objective
     assert hasattr(model, "ObjVal"), "Model.ObjVal (objective value) not exposed."
     assert np.isclose(model.ObjVal, 3.25, atol=atol), f"Unexpected objective value: {model.ObjVal}"

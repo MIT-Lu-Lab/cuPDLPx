@@ -464,7 +464,8 @@ static py::dict solve_once(py::object A,
                            py::object constraint_upper_bound,    // u  (optional → inf)
                            py::object params = py::none(),       // PDHG parameters (optional → default)
                            py::object primal_start = py::none(), // warm start primal solution (optional)
-                           py::object dual_start = py::none()    // warm start dual solution (optional)
+                           py::object dual_start = py::none(),   // warm start dual solution (optional)
+                           bool minimize = true                  // objective sense (true → minimize)
 )
 {
     // parse matrix
@@ -492,13 +493,14 @@ static py::dict solve_once(py::object A,
     }
 
     // build problem
-    lp_problem_t *prob = create_lp_problem(c_ptr,      // objective vector
-                                           &view.desc, // constraint matrix
-                                           l_ptr,      // constraint lower bound
-                                           u_ptr,      // constraint upper bound
-                                           lb_ptr,     // variable lower bound
-                                           ub_ptr,     // variable upper bound
-                                           c0_ptr      // objective constant
+    lp_problem_t *prob = create_lp_problem(c_ptr,                                                       // objective vector
+                                           &view.desc,                                                  // constraint matrix
+                                           l_ptr,                                                       // constraint lower bound
+                                           u_ptr,                                                       // constraint upper bound
+                                           lb_ptr,                                                      // variable lower bound
+                                           ub_ptr,                                                      // variable upper bound
+                                           c0_ptr,                                                      // objective constant
+                                           minimize ? OBJECTIVE_SENSE_MINIMIZE : OBJECTIVE_SENSE_MAXIMIZE // objective sense
     );
     if (!prob)
     {
@@ -595,5 +597,6 @@ PYBIND11_MODULE(_cupdlpx_core, m)
           py::arg("constraint_upper_bound") = py::none(),
           py::arg("params") = py::none(),
           py::arg("primal_start") = py::none(),
-          py::arg("dual_start") = py::none());
+          py::arg("dual_start") = py::none(),
+          py::arg("minimize") = true);
 }

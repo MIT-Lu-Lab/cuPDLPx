@@ -331,25 +331,25 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->matrix_zero_tol = 1e-9;
 }
 
-static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params)
+void filter_constraint_matrix_entries(lp_problem_t *out, const lp_problem_t *in, const pdhg_parameters_t *params)
 {
-    if (problem == NULL)
+    if (out == NULL || in == NULL)
     {
         fprintf(stderr, "Error: problem pointer is NULL.\n");
         exit(EXIT_FAILURE);
     }
 
-    const int num_rows = problem->num_constraints;
-    const int nnz = problem->constraint_matrix_num_nonzeros;
+    const int num_rows = in->num_constraints;
+    const int nnz = in->constraint_matrix_num_nonzeros;
 
     if (num_rows == 0 || nnz == 0)
     {
         return;
     }
 
-    const int *row_ptr = problem->constraint_matrix_row_pointers;
-    const int *col_ind = problem->constraint_matrix_col_indices;
-    const double *vals = problem->constraint_matrix_values;
+    const int *row_ptr = in->constraint_matrix_row_pointers;
+    const int *col_ind = in->constraint_matrix_col_indices;
+    const double *vals = in->constraint_matrix_values;
 
     if (!row_ptr || !col_ind || !vals)
     {
@@ -372,6 +372,15 @@ static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_p
     if (filtered_nnz == nnz)
     {
         return;
+    }
+
+    if (params->verbose)
+    {
+        const int dropped = nnz - filtered_nnz;
+        printf("Dropped %d near-zero %s (|value| <= %.1e) from the constraint matrix\n",
+               dropped,
+               (dropped == 1 ? "entry" : "entries"),
+               params->matrix_zero_tol);
     }
 
     const size_t alloc_nnz = (filtered_nnz > 0) ? (size_t)filtered_nnz : 1;
@@ -397,22 +406,56 @@ static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_p
         new_row_ptr[i + 1] = pos;
     }
 
-    free(problem->constraint_matrix_row_pointers);
-    free(problem->constraint_matrix_col_indices);
-    free(problem->constraint_matrix_values);
+    out->constraint_matrix_row_pointers = new_row_ptr;
+    out->constraint_matrix_col_indices = new_col_ind;
+    out->constraint_matrix_values = new_vals;
+    out->constraint_matrix_num_nonzeros = filtered_nnz;
+}
 
-    problem->constraint_matrix_row_pointers = new_row_ptr;
-    problem->constraint_matrix_col_indices = new_col_ind;
-    problem->constraint_matrix_values = new_vals;
-    problem->constraint_matrix_num_nonzeros = filtered_nnz;
-
-    if (((nnz - filtered_nnz) > 0) && params->verbose)
+lp_problem_t preprocess_problem(const lp_problem_t *original, const pdhg_parameters_t *params)
+{
+    lp_problem_t working = *original;
+    if (original->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
     {
-        printf("Dropped %d near-zero %s (|value| <= %.1e) from the constraint matrix\n",
-               nnz - filtered_nnz,
-               (nnz - filtered_nnz == 1 ? "entry" : "entries"),
-               params->matrix_zero_tol);
+        double *negated = (double *)safe_malloc((size_t)original->num_variables * sizeof(double));
+        for (int i = 0; i < original->num_variables; ++i)
+        {
+            negated[i] = -original->objective_vector[i];
+        }
+        working.objective_vector = negated;
+        working.objective_constant = -original->objective_constant;
+        working.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
     }
+    filter_constraint_matrix_entries(&working, original, params);
+    return working;
+}
+
+void free_preprocessed_problem(const lp_problem_t *preprocessed, const lp_problem_t *original)
+{
+    if (preprocessed->objective_vector != original->objective_vector)
+        free(preprocessed->objective_vector);
+    if (preprocessed->constraint_matrix_values != original->constraint_matrix_values)
+    {
+        free(preprocessed->constraint_matrix_row_pointers);
+        free(preprocessed->constraint_matrix_col_indices);
+        free(preprocessed->constraint_matrix_values);
+    }
+}
+
+void restore_original_objective_sense(cupdlpx_result_t *result, objective_sense_t sense)
+{
+    if (result == NULL || sense != OBJECTIVE_SENSE_MAXIMIZE)
+        return;
+    if (result->dual_solution != NULL)
+        for (int i = 0; i < result->num_constraints; ++i)
+            result->dual_solution[i] = -result->dual_solution[i];
+    if (result->reduced_cost != NULL)
+        for (int i = 0; i < result->num_variables; ++i)
+            result->reduced_cost[i] = -result->reduced_cost[i];
+    result->primal_objective_value = -result->primal_objective_value;
+    result->dual_objective_value = -result->dual_objective_value;
+    result->primal_ray_linear_objective = -result->primal_ray_linear_objective;
+    result->dual_ray_objective = -result->dual_ray_objective;
 }
 
 #define PRINT_DIFF_INT(name, current, default_val)                                                                     \
@@ -442,7 +485,7 @@ static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_p
         }                                                                                                              \
     } while (0)
 
-void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem)
+void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *problem)
 {
     pdhg_parameters_t default_params;
     set_default_parameters(&default_params);
@@ -462,7 +505,6 @@ void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem)
     printf("---------------------------------------------------------------------"
            "------------------\n");
 
-    filter_constraint_matrix_entries(problem, params);
     printf("Problem: %d rows, %d columns, %d nonzeros\n",
            problem->num_constraints,
            problem->num_variables,
@@ -560,8 +602,8 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
         printf("%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e \n",
                state->total_count,
                state->cumulative_time_sec,
-               state->primal_objective_value,
-               state->dual_objective_value,
+               state->original_objective_sign * state->primal_objective_value,
+               state->original_objective_sign * state->dual_objective_value,
                state->absolute_primal_residual,
                state->absolute_dual_residual,
                state->objective_gap,
@@ -1169,7 +1211,7 @@ void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state, bool 
             printf("%6d %.1e | %8.1e |    %.1e   |   %.1e   \n",
                    state->total_count,
                    state->cumulative_time_sec,
-                   state->primal_objective_value,
+                   state->original_objective_sign * state->primal_objective_value,
                    state->absolute_primal_residual,
                    state->relative_primal_residual);
         }
@@ -1178,7 +1220,7 @@ void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state, bool 
             printf("%6d %.1e | %8.1e |    %.1e   |   %.1e   \n",
                    state->total_count,
                    state->cumulative_time_sec,
-                   state->dual_objective_value,
+                   state->original_objective_sign * state->dual_objective_value,
                    state->absolute_dual_residual,
                    state->relative_dual_residual);
         }

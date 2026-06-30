@@ -30,7 +30,8 @@ extern "C"
                                     const double *con_ub,
                                     const double *var_lb,
                                     const double *var_ub,
-                                    const double *objective_constant);
+                                    const double *objective_constant,
+                                    objective_sense_t objective_sense);
 
     // Set up initial primal and dual solution for an lp_problem_t
     void set_start_values(lp_problem_t *prob, const double *primal, const double *dual);

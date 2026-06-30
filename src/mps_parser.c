@@ -534,8 +534,7 @@ lp_problem_t *read_mps_file(const char *filename)
     prob->num_variables = state.col_map.size;
     prob->num_constraints = state.row_map.size;
     prob->constraint_matrix_num_nonzeros = state.coo_matrix.nnz;
-    prob->objective_constant =
-        (state.objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -state.objective_constant : state.objective_constant;
+    prob->objective_constant = state.objective_constant;
     prob->objective_sense = state.objective_sense;
 
     prob->objective_vector = state.objective_coeffs;
@@ -552,14 +551,6 @@ lp_problem_t *read_mps_file(const char *filename)
     state.var_upper_bounds = NULL;
     state.constraint_lower_bounds = NULL;
     state.constraint_upper_bounds = NULL;
-
-    if (state.objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        for (int i = 0; i < prob->num_variables; ++i)
-        {
-            prob->objective_vector[i] *= -1.0;
-        }
-    }
 
     if (mps_coo_to_csr(prob, &state.coo_matrix, prob->num_constraints) != 0)
     {

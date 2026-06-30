@@ -29,7 +29,8 @@ lp_problem_t *create_lp_problem(const double *objective_c,
                                 const double *con_ub,
                                 const double *var_lb,
                                 const double *var_ub,
-                                const double *objective_constant)
+                                const double *objective_constant,
+                                objective_sense_t objective_sense)
 {
     lp_problem_t *prob = (lp_problem_t *)safe_malloc(sizeof(lp_problem_t));
     prob->primal_start = NULL;
@@ -105,6 +106,7 @@ lp_problem_t *create_lp_problem(const double *objective_c,
 
     // default fill values
     prob->objective_constant = objective_constant ? *objective_constant : 0.0;
+    prob->objective_sense = objective_sense;
     fill_or_copy(&prob->objective_vector, prob->num_variables, objective_c, 0.0);
     fill_or_copy(&prob->variable_lower_bound, prob->num_variables, var_lb, -INFINITY);
     fill_or_copy(&prob->variable_upper_bound, prob->num_variables, var_ub, INFINITY);

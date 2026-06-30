@@ -43,7 +43,7 @@ typedef struct
     double *variable_upper_bound;
     double *objective_vector;
     double objective_constant;
-    double objective_sign;
+    double original_objective_sign;
     cu_sparse_matrix_csr_t *constraint_matrix;
     cu_sparse_matrix_csr_t *constraint_matrix_t;
     double *constraint_lower_bound;

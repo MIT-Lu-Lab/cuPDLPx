@@ -189,6 +189,10 @@ void pslp_postsolve(const cupdlpx_presolve_info_t *info, cupdlpx_result_t *resul
     result->num_reduced_nonzeros = info->presolver->reduced_prob->nnz;
     result->presolve_status = info->presolve_status;
 
+    free(result->primal_solution);
+    free(result->dual_solution);
+    free(result->reduced_cost);
+
     result->primal_solution = (double *)safe_malloc(original_prob->num_variables * sizeof(double));
     result->dual_solution = (double *)safe_malloc(original_prob->num_constraints * sizeof(double));
     result->reduced_cost = (double *)safe_malloc(original_prob->num_variables * sizeof(double));
@@ -217,9 +221,8 @@ void pslp_postsolve(const cupdlpx_presolve_info_t *info, cupdlpx_result_t *resul
             obj += original_prob->objective_vector[i] * result->primal_solution[i];
         }
         obj += original_prob->objective_constant;
-        double objective_sign = (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
-        result->primal_objective_value = objective_sign * obj;
-        result->dual_objective_value = objective_sign * obj;
+        result->primal_objective_value = obj;
+        result->dual_objective_value = obj;
     }
     // if (info->presolver->stats != NULL) {
     //     result->presolve_stats = *(info->presolver->stats);

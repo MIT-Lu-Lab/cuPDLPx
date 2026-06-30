@@ -355,23 +355,20 @@ class Model:
         # check model sense
         if self.ModelSense not in (PDLP.MINIMIZE, PDLP.MAXIMIZE):
             raise ValueError("model_sense must be PDLP.MINIMIZE or PDLP.MAXIMIZE")
-        # determine sign
-        sign = 1 if self.ModelSense == PDLP.MINIMIZE else -1
-        # effective objective based on sense
-        c_eff  = sign * self.c if self.c is not None else None
-        c0_eff = sign * self.c0 if self.c0 is not None else None
+        minimize = self.ModelSense == PDLP.MINIMIZE
         # call the core solver
         info = solve_once(
             self.A,
-            c_eff,
-            c0_eff,
+            self.c,
+            self.c0,
             self.lb,
             self.ub,
             self.constr_lb,
             self.constr_ub,
             params=self._params,
             primal_start=self._primal_start,
-            dual_start=self._dual_start
+            dual_start=self._dual_start,
+            minimize=minimize,
         )
         # solutions
         self._x = np.asarray(info.get("X")) if info.get("X") is not None else None
@@ -380,8 +377,8 @@ class Model:
         # objectives & gaps
         primal_obj_eff = info.get("PrimalObj")
         dual_obj_eff   = info.get("DualObj")
-        self._objval = sign * primal_obj_eff if primal_obj_eff is not None else None
-        self._dualobj = sign * dual_obj_eff if dual_obj_eff is not None else None
+        self._objval = primal_obj_eff if primal_obj_eff is not None else None
+        self._dualobj = dual_obj_eff if dual_obj_eff is not None else None
         self._gap = info.get("ObjectiveGap")
         self._rel_gap = info.get("RelativeObjectiveGap")
         # status & counters
@@ -398,8 +395,8 @@ class Model:
         self._max_d_ray = info.get("MaxDualRayInfeas")
         p_ray_lin_eff  = info.get("PrimalRayLinObj")
         d_ray_obj_eff  = info.get("DualRayObj")
-        self._p_ray_lin_obj = sign * p_ray_lin_eff if p_ray_lin_eff is not None else None
-        self._d_ray_obj = sign * d_ray_obj_eff if d_ray_obj_eff is not None else None
+        self._p_ray_lin_obj = p_ray_lin_eff if p_ray_lin_eff is not None else None
+        self._d_ray_obj = d_ray_obj_eff if d_ray_obj_eff is not None else None
 
     def _clear_solution_cache(self) -> None:
         """

@@ -124,7 +124,15 @@ extern "C"
 
     void check_termination_criteria(pdhg_solver_state_t *solver_state, const termination_criteria_t *criteria);
 
-    void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem);
+    void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *problem);
+
+    void filter_constraint_matrix_entries(lp_problem_t *out, const lp_problem_t *in, const pdhg_parameters_t *params);
+
+    lp_problem_t preprocess_problem(const lp_problem_t *original, const pdhg_parameters_t *params);
+
+    void free_preprocessed_problem(const lp_problem_t *preprocessed, const lp_problem_t *original);
+
+    void restore_original_objective_sense(cupdlpx_result_t *result, objective_sense_t sense);
 
     void pdhg_final_log(const cupdlpx_result_t *result, const pdhg_parameters_t *params);
 

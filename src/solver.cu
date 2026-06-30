@@ -62,7 +62,8 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state, co
 static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_problem,
-                                                    const pdhg_parameters_t *params);
+                                                    const pdhg_parameters_t *params,
+                                                    objective_sense_t original_objective_sense);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 void pdhg_solver_state_free(pdhg_solver_state_t *state);
 void rescale_info_free(rescale_info_t *info);
@@ -127,28 +128,33 @@ static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
 static void check_params_validity(const pdhg_parameters_t *params);
 
-cupdlpx_result_t *optimize(const pdhg_parameters_t *params, lp_problem_t *original_problem)
+cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *original_problem)
 {
     check_params_validity(params);
+
     print_initial_info(params, original_problem);
 
-    cupdlpx_presolve_info_t *presolve_info = NULL;
-    const lp_problem_t *working_problem = original_problem;
+    lp_problem_t preprocessed_problem = preprocess_problem(original_problem, params);
+    const lp_problem_t *working_problem = &preprocessed_problem;
 
+    cupdlpx_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
     {
-        presolve_info = pslp_presolve(original_problem, params);
+        presolve_info = pslp_presolve(&preprocessed_problem, params);
         if (presolve_info->problem_solved_during_presolve)
         {
-            cupdlpx_result_t *result = create_result_from_presolve(presolve_info, original_problem);
+            cupdlpx_result_t *result = create_result_from_presolve(presolve_info, &preprocessed_problem);
             cupdlpx_presolve_info_free(presolve_info);
+            restore_original_objective_sense(result, original_problem->objective_sense);
             pdhg_final_log(result, params);
+            free_preprocessed_problem(&preprocessed_problem, original_problem);
             return result;
         }
         working_problem = presolve_info->reduced_problem;
     }
 
-    pdhg_solver_state_t *state = initialize_solver_state(working_problem, params);
+    pdhg_solver_state_t *state =
+        initialize_solver_state(working_problem, params, original_problem->objective_sense);
     display_iteration_stats(state, params->verbose);
 
     initialize_step_size_and_primal_weight(state, params);
@@ -244,17 +250,20 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, lp_problem_t *origin
         feasibility_polish(params, state);
     }
 
-    cupdlpx_result_t *result = create_result_from_state(state, original_problem);
+    cupdlpx_result_t *result = create_result_from_state(state, &preprocessed_problem);
 
     if (params->presolve && presolve_info)
     {
-        pslp_postsolve(presolve_info, result, original_problem);
+        pslp_postsolve(presolve_info, result, &preprocessed_problem);
         cupdlpx_presolve_info_free(presolve_info);
     }
 
-    pdhg_final_log(result, params);
     pdhg_solver_state_free(state);
     CUDA_CHECK(cudaGetLastError());
+
+    restore_original_objective_sense(result, original_problem->objective_sense);
+    pdhg_final_log(result, params);
+    free_preprocessed_problem(&preprocessed_problem, original_problem);
     return result;
 }
 
@@ -314,7 +323,8 @@ __global__ void compute_and_rescale_reduced_cost_kernel(double *__restrict__ red
 }
 
 static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_problem,
-                                                    const pdhg_parameters_t *params)
+                                                    const pdhg_parameters_t *params,
+                                                    objective_sense_t original_objective_sense)
 {
     pdhg_solver_state_t *state = (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
 
@@ -327,7 +337,7 @@ static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_
     state->num_variables = n_vars;
     state->num_constraints = n_cons;
     state->objective_constant = working_problem->objective_constant;
-    state->objective_sign = (working_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
+    state->original_objective_sign = (original_objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
 
     state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
     state->constraint_matrix_t = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
@@ -1261,8 +1271,8 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state, co
     results->cumulative_time_sec = state->cumulative_time_sec;
     results->relative_primal_residual = state->relative_primal_residual;
     results->relative_dual_residual = state->relative_dual_residual;
-    results->primal_objective_value = state->objective_sign * state->primal_objective_value;
-    results->dual_objective_value = state->objective_sign * state->dual_objective_value;
+    results->primal_objective_value = state->primal_objective_value;
+    results->dual_objective_value = state->dual_objective_value;
     results->objective_gap = state->objective_gap;
     results->relative_objective_gap = state->relative_objective_gap;
     results->max_primal_ray_infeasibility = state->max_primal_ray_infeasibility;
