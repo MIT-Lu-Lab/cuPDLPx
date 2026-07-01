@@ -254,6 +254,16 @@ void check_termination_criteria(pdhg_solver_state_t *solver_state, const termina
         solver_state->termination_reason = TERMINATION_REASON_OPTIMAL;
         return;
     }
+    if (primal_infeasibility_criteria_met(solver_state, criteria->eps_infeasible))
+    {
+        solver_state->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
+        return;
+    }
+    if (dual_infeasibility_criteria_met(solver_state, criteria->eps_infeasible))
+    {
+        solver_state->termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
+        return;
+    }
     if (solver_state->total_count >= criteria->iteration_limit)
     {
         solver_state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
@@ -318,6 +328,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->termination_criteria.time_sec_limit = 3600.0;
     params->termination_criteria.iteration_limit = INT32_MAX;
     params->termination_criteria.eps_feas_polish_relative = 1e-6;
+    params->termination_criteria.eps_infeasible = 1e-12;
 
     params->restart_params.artificial_restart_threshold = 0.36;
     params->restart_params.sufficient_reduction_for_restart = 0.2;
