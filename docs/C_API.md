@@ -15,7 +15,8 @@ lp_problem_t *create_lp_problem(
     const double *con_ub,                // constraint upper bounds (length m)
     const double *var_lb,                // variable lower bounds (length n)
     const double *var_ub,                // variable upper bounds (length n)
-    const double *objective_constant     // scalar objective offset
+    const double *objective_constant,    // scalar objective offset
+    const objective_sense_t *objective_sense // objective sense (NULL → minimize)
 );
 
 cupdlpx_result_t* solve_lp_problem(
@@ -32,6 +33,7 @@ cupdlpx_result_t* solve_lp_problem(
 - `var_lb`: Variable lower bounds. If `NULL`, defaults to all `-INFINITY`.
 - `var_ub`: Variable upper bounds. If `NULL`, defaults to all `+INFINITY`.
 - `objective_constant`: Scalar constant term added to the objective value. If `NULL`, defaults to `0.0`.
+- `objective_sense`: Objective sense, `OBJECTIVE_SENSE_MINIMIZE` or `OBJECTIVE_SENSE_MAXIMIZE`. If `NULL`, defaults to minimize.
 
 
 `solve_lp_problem` parameters:
@@ -70,7 +72,7 @@ int main() {
 
     // Build the problem
     lp_problem_t* prob = create_lp_problem(
-        c, &A_desc, l, u, NULL, NULL, NULL);
+        c, &A_desc, l, u, NULL, NULL, NULL, NULL);
 
     // Solve (NULL → use default parameters)
     cupdlpx_result_t* res = solve_lp_problem(prob, NULL);

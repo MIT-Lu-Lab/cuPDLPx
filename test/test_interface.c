@@ -37,7 +37,8 @@ static void run_once(const char *tag, const matrix_desc_t *A_desc, const double 
                                            u,      // constraint upper bound con_ub
                                            NULL,   // variable lower bound var_lb (defaults to 0)
                                            NULL,   // variable upper bound var_ub (defaults to +inf)
-                                           NULL    // objective constant c0 (defaults to 0.0)
+                                           NULL,   // objective constant c0 (defaults to 0.0)
+                                           NULL    // objective sense (defaults to minimize)
     );
     if (!prob)
     {
@@ -70,7 +71,7 @@ test_warm_start(const char *tag, const matrix_desc_t *A_desc, const double *c, c
     int n = A_desc->n;
     int m = A_desc->m;
 
-    lp_problem_t *prob = create_lp_problem(c, A_desc, l, u, NULL, NULL, NULL);
+    lp_problem_t *prob = create_lp_problem(c, A_desc, l, u, NULL, NULL, NULL, NULL);
     if (!prob)
     {
         fprintf(stderr, "[test] create_lp_problem failed for %s.\n", tag);
@@ -120,7 +121,6 @@ int main()
     A_dense.m = m;
     A_dense.n = n;
     A_dense.fmt = matrix_dense;
-    A_dense.zero_tolerance = 0.0;
     A_dense.data.dense.A = &A[0][0];
 
     // A as a CSR matrix
@@ -133,7 +133,6 @@ int main()
     A_csr.m = m;
     A_csr.n = n;
     A_csr.fmt = matrix_csr;
-    A_csr.zero_tolerance = 0.0;
     A_csr.data.csr.nnz = 5;
     A_csr.data.csr.row_ptr = csr_row_ptr;
     A_csr.data.csr.col_ind = csr_col_ind;
@@ -149,7 +148,6 @@ int main()
     A_csc.m = m;
     A_csc.n = n;
     A_csc.fmt = matrix_csc;
-    A_csc.zero_tolerance = 0.0;
     A_csc.data.csc.nnz = 5;
     A_csc.data.csc.col_ptr = csc_col_ptr;
     A_csc.data.csc.row_ind = csc_row_ind;
@@ -165,7 +163,6 @@ int main()
     A_coo.m = m;
     A_coo.n = n;
     A_coo.fmt = matrix_coo;
-    A_coo.zero_tolerance = 0.0;
     A_coo.data.coo.nnz = 5;
     A_coo.data.coo.row_ind = coo_row_ind;
     A_coo.data.coo.col_ind = coo_col_ind;
@@ -208,7 +205,8 @@ int main()
                                            u,        // con_ub
                                            NULL,     // var_lb
                                            NULL,     // var_ub
-                                           NULL      // objective_constant
+                                           NULL,     // objective_constant
+                                           NULL      // objective sense (defaults to minimize)
     );
     if (!prob)
     {

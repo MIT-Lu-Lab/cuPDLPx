@@ -493,14 +493,15 @@ static py::dict solve_once(py::object A,
     }
 
     // build problem
-    lp_problem_t *prob = create_lp_problem(c_ptr,                                                       // objective vector
-                                           &view.desc,                                                  // constraint matrix
-                                           l_ptr,                                                       // constraint lower bound
-                                           u_ptr,                                                       // constraint upper bound
-                                           lb_ptr,                                                      // variable lower bound
-                                           ub_ptr,                                                      // variable upper bound
-                                           c0_ptr,                                                      // objective constant
-                                           minimize ? OBJECTIVE_SENSE_MINIMIZE : OBJECTIVE_SENSE_MAXIMIZE // objective sense
+    objective_sense_t sense = minimize ? OBJECTIVE_SENSE_MINIMIZE : OBJECTIVE_SENSE_MAXIMIZE;
+    lp_problem_t *prob = create_lp_problem(c_ptr,      // objective vector
+                                           &view.desc, // constraint matrix
+                                           l_ptr,      // constraint lower bound
+                                           u_ptr,      // constraint upper bound
+                                           lb_ptr,     // variable lower bound
+                                           ub_ptr,     // variable upper bound
+                                           c0_ptr,     // objective constant
+                                           &sense      // objective sense
     );
     if (!prob)
     {
