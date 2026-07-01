@@ -125,6 +125,7 @@ void cupdlpx_result_free(cupdlpx_result_t *results)
 
     free(results->primal_solution);
     free(results->dual_solution);
+    free(results->reduced_cost);
     free(results);
 }
 
