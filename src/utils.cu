@@ -328,7 +328,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->termination_criteria.time_sec_limit = 3600.0;
     params->termination_criteria.iteration_limit = INT32_MAX;
     params->termination_criteria.eps_feas_polish_relative = 1e-6;
-    params->termination_criteria.eps_infeasible = 1e-12;
+    params->termination_criteria.eps_infeasible = 1e-14;
 
     params->restart_params.artificial_restart_threshold = 0.36;
     params->restart_params.sufficient_reduction_for_restart = 0.2;
