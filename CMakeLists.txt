@@ -203,8 +203,9 @@ if(USE_HIP)
   )
   # Mark .cu files as HIP language
   set_source_files_properties(${CU_SOURCES} PROPERTIES LANGUAGE HIP)
-  # Define USE_HIP for the compat header
-  add_compile_definitions(USE_HIP)
+  # Define USE_HIP for the compat header; attach to the interface target so it
+  # travels to every consumer (core, shared, cli, tests, python bindings).
+  target_compile_definitions(cupdlpx_compile_flags INTERFACE USE_HIP)
 else()
   set(CORE_LINK_LIBS
     PUBLIC cupdlpx_compile_flags
@@ -225,10 +226,16 @@ if(CUPDLPX_BUILD_STATIC_LIB)
       POSITION_INDEPENDENT_CODE ON
     )
     if(USE_HIP)
+      # HIP compiles device code whole-program by default (-fgpu-rdc off), so
+      # each object is self-contained and the archive needs no separate device
+      # link. Host-only consumers (the pybind module) resolve everything at the
+      # normal link step. HIP_ARCHITECTURES is inherited from CMAKE_HIP_ARCHITECTURES.
       set_target_properties(cupdlpx_core PROPERTIES
         HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}"
       )
     else()
+      # CUDA uses relocatable device code here, so device symbols must be
+      # resolved at the archive boundary for host-only consumers to link.
       set_target_properties(cupdlpx_core PROPERTIES
         CUDA_SEPARABLE_COMPILATION ON
         CUDA_RESOLVE_DEVICE_SYMBOLS ON

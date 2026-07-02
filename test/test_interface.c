@@ -235,6 +235,10 @@ int main()
         set_default_parameters(&params9);
         params9.presolve = false;
         params9.verbose = true;
+        // Tighten convergence so the objective reaches the true optimum within
+        // 1e-4; the default 1e-4 relative tolerance stops around 3.0005.
+        params9.termination_criteria.eps_optimal_relative = 1e-8;
+        params9.termination_criteria.eps_feasible_relative = 1e-8;
         cupdlpx_result_t *res9 = solve_lp_problem(prob9, &params9);
         lp_problem_free(prob9);
         if (!res9)
@@ -244,6 +248,15 @@ int main()
         }
         print_vec("x", res9->primal_solution, res9->num_variables);
         print_vec("y", res9->dual_solution, res9->num_constraints);
+        // Known optimum for this problem: x = [1, 2], objective = 3.0.
+        if (res9->termination_reason != TERMINATION_REASON_OPTIMAL ||
+            fabs(res9->primal_objective_value - 3.0) > 1e-4)
+        {
+            fprintf(stderr, "[test] Test 9 wrong: status=%d obj=%g (expected OPTIMAL, 3.0)\n",
+                    res9->termination_reason, res9->primal_objective_value);
+            cupdlpx_result_free(res9);
+            return 1;
+        }
         cupdlpx_result_free(res9);
     }
 
