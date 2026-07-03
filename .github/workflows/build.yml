@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-cuda:
     strategy:
       fail-fast: false
       matrix:
@@ -64,3 +64,51 @@ jobs:
         shell: pwsh
         run: |
           cmake --build build --clean-first --config Release
+
+  build-hip:
+    name: build-hip (rocm ${{ matrix.rocm }})
+    strategy:
+      fail-fast: false
+      matrix:
+        rocm: ["7.2", "7.2.4"]
+    runs-on: ubuntu-latest
+    container:
+      image: rocm/dev-ubuntu-22.04:${{ matrix.rocm }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      # actions/checkout needs git, which the ROCm dev image does not ship with.
+      - name: Install checkout prerequisites
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          apt-get install -y --no-install-recommends \
+            cmake ninja-build zlib1g-dev \
+            hipblas-dev hipsparse-dev hipcub-dev rocprim-dev
+
+      # The ROCm apt packages don't add /opt/rocm/bin to PATH for non-interactive shells.
+      - name: Add ROCm to PATH
+        run: echo "/opt/rocm/bin" >> "$GITHUB_PATH"
+
+      - name: HIP info
+        run: |
+          hipcc --version
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCUPDLPX_BUILD_TESTS=OFF \
+            -DUSE_HIP=ON \
+            -DCMAKE_HIP_ARCHITECTURES=gfx90a \
+            -DCMAKE_PREFIX_PATH=/opt/rocm
+
+      - name: Build
+        run: |
+          cmake --build build --clean-first
