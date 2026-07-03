@@ -54,7 +54,8 @@ void cupdlpx_spmv_buffer_size(cusparseHandle_t sparse_handle,
                                              vec_y,
                                              vec_y,
                                              CUDA_R_64F,
-                                             CUSPARSE_SPMVOP_ALG_DEFAULT,
+                                            //  CUSPARSE_SPMVOP_ALG_DEFAULT,
+                                             CUSPARSE_SPMVOP_ALG2,
                                              buffer_size));
 #else
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(sparse_handle,
@@ -89,7 +90,8 @@ void cupdlpx_spmv_prepare(cusparseHandle_t sparse_handle,
                                               vec_y,
                                               vec_y,
                                               CUDA_R_64F,
-                                              CUSPARSE_SPMVOP_ALG_DEFAULT,
+                                            //   CUSPARSE_SPMVOP_ALG_DEFAULT,
+                                              CUSPARSE_SPMVOP_ALG2,
                                               buffer));
     CUSPARSE_CHECK(cusparseSpMVOp_createPlan(sparse_handle, local_descr, &local_plan, NULL, 0));
     *descr = (void *)local_descr;
