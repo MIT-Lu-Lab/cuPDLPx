@@ -249,11 +249,12 @@ int main()
         print_vec("x", res9->primal_solution, res9->num_variables);
         print_vec("y", res9->dual_solution, res9->num_constraints);
         // Known optimum for this problem: x = [1, 2], objective = 3.0.
-        if (res9->termination_reason != TERMINATION_REASON_OPTIMAL ||
-            fabs(res9->primal_objective_value - 3.0) > 1e-4)
+        if (res9->termination_reason != TERMINATION_REASON_OPTIMAL || fabs(res9->primal_objective_value - 3.0) > 1e-4)
         {
-            fprintf(stderr, "[test] Test 9 wrong: status=%d obj=%g (expected OPTIMAL, 3.0)\n",
-                    res9->termination_reason, res9->primal_objective_value);
+            fprintf(stderr,
+                    "[test] Test 9 wrong: status=%d obj=%g (expected OPTIMAL, 3.0)\n",
+                    res9->termination_reason,
+                    res9->primal_objective_value);
             cupdlpx_result_free(res9);
             return 1;
         }
