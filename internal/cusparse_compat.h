@@ -23,3 +23,5 @@ typedef void *cusparseSpMVOpPlan_t;
 #else
 #define CUPDLPX_HAS_SPMVOP 0
 #endif
+
+#endif // USE_HIP
