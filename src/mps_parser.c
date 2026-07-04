@@ -408,6 +408,7 @@ lp_problem_t *read_mps_file(const char *filename)
     if (!reader)
     {
         fprintf(stderr, "ERROR: Could not open file %s\n", filename);
+        return NULL;
     }
 
     namemap_init(&state.row_map, 1024);

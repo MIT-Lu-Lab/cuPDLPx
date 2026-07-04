@@ -4,7 +4,25 @@
 cmake_minimum_required(VERSION 3.20)
 
 # Project config
-project(cupdlpx LANGUAGES C CXX CUDA)
+project(cupdlpx LANGUAGES C CXX)
+
+# Default CUDA architectures: SASS for every current arch, PTX only for the newest one as a forward-compat fallback.
+find_package(CUDAToolkit REQUIRED)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
+  if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 13)
+    set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90-real
+        100-real 120-real 120-virtual)
+  elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
+    set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
+        89-real 90-real 100-real 120-real 120-virtual)
+  else()
+    set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
+        89-real 90-real 90-virtual)
+  endif()
+endif()
+
+enable_language(CUDA)
+message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 
 set(CUPDLPX_VERSION_MAJOR 0)
 set(CUPDLPX_VERSION_MINOR 2)
@@ -30,10 +48,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-endif()
-
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90)
 endif()
 
 # -----------------------------------------------------------------------------
@@ -85,7 +99,6 @@ endif()
 # -----------------------------------------------------------------------------
 # FIND DEPENDENCIES
 # -----------------------------------------------------------------------------
-find_package(CUDAToolkit REQUIRED)
 include(FetchContent)
 
 # 1. ZLIB Configuration
