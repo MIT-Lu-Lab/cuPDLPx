@@ -11,13 +11,3 @@
 #else
 #define CUPDLPX_HAS_SPMVOP 0
 #endif
-
-#if !CUPDLPX_HAS_SPMVOP
-// The SpMVOp types were added to cusparse.h before the functions
-// (e.g. CUDA 13.1 base has the types but not the functions).
-// Only provide fallback typedefs for cuSPARSE versions that lack them entirely.
-#if !defined(CUSPARSE_VERSION) || CUSPARSE_VERSION < 12700
-typedef void *cusparseSpMVOpDescr_t;
-typedef void *cusparseSpMVOpPlan_t;
-#endif
-#endif
