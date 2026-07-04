@@ -30,8 +30,8 @@ Our work is presented in two papers:
 * **Build Tools:** CMake (≥ 3.20), GCC, and NVCC (CUDA) or hipcc (ROCm).
 
 > **SpMV backend** is selected automatically at compile time based on cuSPARSE version:
-> - `cusparseSpMV` — CUDA 12.4 – 13.1 (cuSPARSE < 12.7.3)
-> - `cusparseSpMVOp` — CUDA 13.1 Update 1+ (cuSPARSE ≥ 12.7.3)
+> - `cusparseSpMV` — CUDA 12.4 – 13.2 (cuSPARSE < 12.8.1)
+> - `cusparseSpMVOp` — CUDA 13.3+ (cuSPARSE ≥ 12.8.1)
 >
 > On AMD GPUs the solver uses the `hipsparseSpMV` backend via hipSPARSE.
 

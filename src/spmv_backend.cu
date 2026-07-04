@@ -47,8 +47,15 @@ void cupdlpx_spmv_buffer_size(cusparseHandle_t sparse_handle,
                               size_t *buffer_size)
 {
 #if CUPDLPX_HAS_SPMVOP
-    CUSPARSE_CHECK(cusparseSpMVOp_bufferSize(
-        sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, mat, vec_x, vec_y, vec_y, CUDA_R_64F, buffer_size));
+    CUSPARSE_CHECK(cusparseSpMVOp_bufferSize(sparse_handle,
+                                             CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                             mat,
+                                             vec_x,
+                                             vec_y,
+                                             vec_y,
+                                             CUDA_R_64F,
+                                             CUSPARSE_SPMVOP_ALG2,
+                                             buffer_size));
 #else
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(sparse_handle,
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -74,8 +81,16 @@ void cupdlpx_spmv_prepare(cusparseHandle_t sparse_handle,
 #if CUPDLPX_HAS_SPMVOP
     cusparseSpMVOpDescr_t local_descr = NULL;
     cusparseSpMVOpPlan_t local_plan = NULL;
-    CUSPARSE_CHECK(cusparseSpMVOp_createDescr(
-        sparse_handle, &local_descr, CUSPARSE_OPERATION_NON_TRANSPOSE, mat, vec_x, vec_y, vec_y, CUDA_R_64F, buffer));
+    CUSPARSE_CHECK(cusparseSpMVOp_createDescr(sparse_handle,
+                                              &local_descr,
+                                              CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                              mat,
+                                              vec_x,
+                                              vec_y,
+                                              vec_y,
+                                              CUDA_R_64F,
+                                              CUSPARSE_SPMVOP_ALG2,
+                                              buffer));
     CUSPARSE_CHECK(cusparseSpMVOp_createPlan(sparse_handle, local_descr, &local_plan, NULL, 0));
     *descr = (void *)local_descr;
     *plan = (void *)local_plan;

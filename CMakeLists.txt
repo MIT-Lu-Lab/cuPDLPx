@@ -10,7 +10,25 @@ option(USE_HIP "Build with HIP for AMD GPUs" OFF)
 if(USE_HIP)
   project(cupdlpx LANGUAGES C CXX HIP)
 else()
-  project(cupdlpx LANGUAGES C CXX CUDA)
+  project(cupdlpx LANGUAGES C CXX)
+
+  # Default CUDA architectures: SASS for every current arch, PTX only for the newest one as a forward-compat fallback.
+  find_package(CUDAToolkit REQUIRED)
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
+    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 13)
+      set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90-real
+          100-real 120-real 120-virtual)
+    elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
+      set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
+          89-real 90-real 100-real 120-real 120-virtual)
+    else()
+      set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
+          89-real 90-real 90-virtual)
+    endif()
+  endif()
+
+  enable_language(CUDA)
+  message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 endif()
 
 set(CUPDLPX_VERSION_MAJOR 0)
@@ -44,10 +62,6 @@ if(USE_HIP)
   # Default to gfx90a if not specified; can override with -DCMAKE_HIP_ARCHITECTURES=gfx1100, etc.
   if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
     set(CMAKE_HIP_ARCHITECTURES "gfx90a")
-  endif()
-else()
-  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90)
   endif()
 endif()
 
@@ -112,8 +126,6 @@ if(USE_HIP)
   find_package(hipsparse REQUIRED)
   find_package(hipcub REQUIRED)
   find_package(rocprim REQUIRED)
-else()
-  find_package(CUDAToolkit REQUIRED)
 endif()
 include(FetchContent)
 
