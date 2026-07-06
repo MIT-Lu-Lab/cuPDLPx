@@ -193,10 +193,6 @@ target_compile_definitions(cupdlpx_compile_flags INTERFACE PSLP_VERSION="${PSLP_
 file(GLOB C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
 file(GLOB CU_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
 list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/cli.c")
-if(WIN32)
-  # mps_parser.c is CLI-only; exclude it on Windows where strtok_r is unavailable
-  list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/mps_parser.c")
-endif()
 
 set(CORE_INCLUDE_DIRS
   PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include

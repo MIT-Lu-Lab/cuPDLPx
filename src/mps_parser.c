@@ -25,6 +25,12 @@ limitations under the License.
 #include <string.h>
 #include <zlib.h>
 
+// MSVC ships the same functionality under different names
+#ifdef _MSC_VER
+#define strtok_r strtok_s
+#define strdup _strdup
+#endif
+
 #define READER_BUFFER_SIZE (4 * 1024 * 1024)
 
 typedef struct NameNode

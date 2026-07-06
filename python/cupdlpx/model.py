@@ -13,13 +13,14 @@
 # limitations under the License.
 
 from __future__ import annotations
+import os
 import warnings
 from typing import Any, Optional, Union
 
 import numpy as np
 import scipy.sparse as sp
 
-from ._core import solve_once, get_default_params
+from ._core import solve_once, get_default_params, read_mps
 from . import PDLP
 
 # array-like type
@@ -47,6 +48,36 @@ def _as_csr_f64_i32(A: sp.spmatrix) -> sp.csr_matrix:
         csr.indices = csr.indices.astype(np.int32, copy=True)
     csr.sort_indices()
     return csr
+
+
+def read(filename: Union[str, os.PathLike]) -> "Model":
+    """
+    Read a linear program from an MPS file (plain or gzip-compressed) and
+    return a Model, similar to gurobipy.read.
+
+    Parameters:
+    - filename: Path to a .mps or .mps.gz file.
+    """
+    filename = os.fspath(filename)
+    if not os.path.isfile(filename):
+        raise FileNotFoundError(f"No such MPS file: {filename}")
+    data = read_mps(str(filename))
+    m = int(data["num_constraints"])
+    n = int(data["num_variables"])
+    A = sp.csr_matrix(
+        (data["values"], data["col_ind"], data["row_ptr"]), shape=(m, n)
+    )
+    model = Model(
+        objective_vector=data["objective_vector"],
+        constraint_matrix=A,
+        constraint_lower_bound=data["constraint_lower_bound"],
+        constraint_upper_bound=data["constraint_upper_bound"],
+        variable_lower_bound=data["variable_lower_bound"],
+        variable_upper_bound=data["variable_upper_bound"],
+        objective_constant=data["objective_constant"],
+    )
+    model.ModelSense = PDLP.MAXIMIZE if data["maximize"] else PDLP.MINIMIZE
+    return model
 
 
 class _ParamsView:

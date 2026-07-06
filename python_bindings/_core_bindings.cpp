@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "cupdlpx.h"
+#include "mps_parser.h"
 
 namespace py = pybind11;
 
@@ -580,12 +581,72 @@ static py::dict solve_once(py::object A,
     return info;
 }
 
+// read an MPS file into problem data arrays
+static py::dict read_mps_py(const std::string &filename)
+{
+    lp_problem_t *prob = nullptr;
+    {
+        // release GIL during file parsing
+        py::gil_scoped_release release;
+        prob = read_mps_file(filename.c_str());
+    }
+    if (!prob)
+    {
+        throw std::runtime_error("Failed to read MPS file: " + filename);
+    }
+
+    const int n = prob->num_variables;
+    const int m = prob->num_constraints;
+    const int nnz = prob->constraint_matrix_num_nonzeros;
+
+    auto copy_f64 = [](const double *src, int len)
+    {
+        py::array_t<double> out({len});
+        if (src && len > 0)
+        {
+            std::memcpy(out.request().ptr, src, sizeof(double) * static_cast<size_t>(len));
+        }
+        return out;
+    };
+    auto copy_i32 = [](const int *src, int len)
+    {
+        py::array_t<int32_t> out({len});
+        if (src && len > 0)
+        {
+            std::memcpy(out.request().ptr, src, sizeof(int32_t) * static_cast<size_t>(len));
+        }
+        return out;
+    };
+
+    py::dict d;
+    d["num_variables"] = n;
+    d["num_constraints"] = m;
+    d["objective_vector"] = copy_f64(prob->objective_vector, n);
+    d["objective_constant"] = prob->objective_constant;
+    d["maximize"] = (prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE);
+    d["row_ptr"] = copy_i32(prob->constraint_matrix_row_pointers, m + 1);
+    d["col_ind"] = copy_i32(prob->constraint_matrix_col_indices, nnz);
+    d["values"] = copy_f64(prob->constraint_matrix_values, nnz);
+    d["constraint_lower_bound"] = copy_f64(prob->constraint_lower_bound, m);
+    d["constraint_upper_bound"] = copy_f64(prob->constraint_upper_bound, m);
+    d["variable_lower_bound"] = copy_f64(prob->variable_lower_bound, n);
+    d["variable_upper_bound"] = copy_f64(prob->variable_upper_bound, n);
+
+    lp_problem_free(prob);
+    return d;
+}
+
 // module
 PYBIND11_MODULE(_cupdlpx_core, m)
 {
     m.doc() = "cupdlpx core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
 
     m.def("get_default_params", &get_default_params_py, "Return default PDHG parameters as a dict");
+
+    m.def("read_mps",
+          &read_mps_py,
+          py::arg("filename"),
+          "Read an MPS file (optionally gzip-compressed) and return the LP data as a dict");
 
     m.def("solve_once",
           &solve_once,

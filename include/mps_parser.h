@@ -18,4 +18,13 @@ limitations under the License.
 
 #include "cupdlpx_types.h"
 
-lp_problem_t *read_mps_file(const char *filename);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    lp_problem_t *read_mps_file(const char *filename);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif

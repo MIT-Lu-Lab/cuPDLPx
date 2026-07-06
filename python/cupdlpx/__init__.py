@@ -23,10 +23,10 @@ if platform.system() == "Windows":
         if os.path.isdir(bin_path):
             os.add_dll_directory(bin_path)
 
-from .model import Model
+from .model import Model, read
 from . import PDLP
 
-__all__ = ["Model"]
+__all__ = ["Model", "read"]
 
 # versioning
 from importlib.metadata import version, PackageNotFoundError

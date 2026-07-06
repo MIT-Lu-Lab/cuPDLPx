@@ -123,6 +123,19 @@ m = Model(objective_vector=c,
           variable_upper_bound=ub)
 ```
 
+### Reading from MPS Files
+
+A `Model` can also be created directly from an MPS file (plain or gzip-compressed) with `cupdlpx.read`, similar to `gurobipy.read`:
+
+```python
+import cupdlpx
+
+m = cupdlpx.read("problem.mps")      # or "problem.mps.gz"
+m.optimize()
+```
+
+The objective sense declared in the file (`OBJSENSE` section) is applied to `ModelSense` automatically.
+
 
 ## Model Sense
 
