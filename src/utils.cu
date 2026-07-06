@@ -1180,10 +1180,11 @@ void pdhg_feas_polish_final_log(const pdhg_solver_state_t *primal_state,
                                 const pdhg_solver_state_t *dual_state,
                                 bool verbose)
 {
-    if (verbose)
+    if (!verbose)
     {
-        printf("---------------------------------------------------------------------------------------\n");
+        return;
     }
+    printf("---------------------------------------------------------------------------------------\n");
     printf("Feasibility Polishing Summary\n");
     printf("  Primal Status        : %s\n", termination_reason_to_string(primal_state->termination_reason));
     printf("  Primal Iterations    : %d\n", primal_state->total_count);
