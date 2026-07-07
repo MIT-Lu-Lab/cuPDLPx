@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -594,6 +595,8 @@ static py::dict read_mps_py(const std::string &filename)
     {
         throw std::runtime_error("Failed to read MPS file: " + filename);
     }
+    // free the problem even if a conversion below throws
+    std::unique_ptr<lp_problem_t, decltype(&lp_problem_free)> guard(prob, &lp_problem_free);
 
     const int n = prob->num_variables;
     const int m = prob->num_constraints;
@@ -632,7 +635,6 @@ static py::dict read_mps_py(const std::string &filename)
     d["variable_lower_bound"] = copy_f64(prob->variable_lower_bound, n);
     d["variable_upper_bound"] = copy_f64(prob->variable_upper_bound, n);
 
-    lp_problem_free(prob);
     return d;
 }
 
