@@ -75,7 +75,7 @@ m.setParams(OutputFlag=True, OptimalityTol=1e-8)
 m.optimize()
 
 # Retrieve results
-print("Status:", m.Status)
+print("Status:", m.StatusName)
 print("Objective:", m.ObjVal)
 print("Primal solution:", m.X)
 print("Dual solution:", m.Pi)
@@ -98,7 +98,7 @@ $$
 - **constraint_matrix** (`A`): Coefficient matrix for the constraints. Both dense (`numpy.ndarray`) and sparse (`scipy.sparse.csr_matrix`) inputs are supported. Internally stored in double precision (`float64`).
 - **constraint_lower_bound** (`l`): Lower bounds for each constraint. Use `-np.inf` or `None` for no lower bound.
 - **constraint_upper_bound** (`u`): Upper bounds for each constraint. Use `+np.inf` or `None` for no upper bound.
-- **variable_lower_bound** (`lb`, optional): Lower bounds for the decision variables. Defaults to `0` for all variables if not provided.
+- **variable_lower_bound** (`lb`, optional): Lower bounds for the decision variables. Defaults to `-np.inf` for all variables if not provided.
 - **variable_upper_bound** (`ub`, optional): Upper bounds for the decision variables. Defaults to `+np.inf` for all variables if not provided.
 - **objective_constant** (`c0`, optional): Constant offset in the objective function. Defaults to `0.0`.
 
@@ -125,7 +125,7 @@ m = Model(objective_vector=c,
 
 ### Reading from MPS Files
 
-A `Model` can also be created directly from an MPS file (plain or gzip-compressed) with `cupdlpx.read`, similar to `gurobipy.read`:
+A `Model` can also be created directly from an MPS file (plain or gzip-compressed) with `cupdlpx.read`:
 
 ```python
 import cupdlpx
@@ -174,7 +174,7 @@ Below is a list of commonly used parameters, their internal keys, and descriptio
 | `ReflectionCoeff` | `reflection_coefficient` | float | `1.0` | Reflection coefficient. |
 | `SVMaxIter` | `sv_max_iter` | int | 5000 | Maximum number of iterations for the power method |
 | `SVTol`| `sv_tol` | float | `1e-4` | Termination tolerance for the power method |
-| `Presolve`| `presolve` | float | `True` | Whether to use presolve. |
+| `Presolve`| `presolve` | bool | `True` | Whether to use presolve. |
 | `FeasibilityPolishing` | `feasibility_polishing` | bool | `False` | Run feasibility polishing process.|
 | `FeasibilityPolishingTol` | `eps_feas_polish_relative` | float | `1e-6` | Relative tolerance for primal/dual residual.  |
 
@@ -191,18 +191,21 @@ m.setParams(TimeLimit=300, FeasibilityTol=1e-6)
 # Method 3: attribute-style access
 m.Params.TimeLimit = 300
 m.Params.FeasibilityTol = 1e-6
+
+# Reset all parameters to backend defaults
+m.resetParams()
 ```
 
 ## Solution Attributes
 
-After calling `m.optimize()`, the solver stores results in a set of read-only attributes. These attributes provide access to primal/dual solutions, objective values, residuals, and runtime statistics.
+After calling `m.optimize()`, the solver stores results in a set of read-only attributes. `optimize()` returns the model itself, so chained access like `m.optimize().Status` is also supported. These attributes provide access to primal/dual solutions, objective values, residuals, and runtime statistics.
 
 ### Attribute Reference
 
 | Attribute | Type | Description |
 |---|---|---|
-| `Status` | str | Human-readable solver status (`"OPTIMAL"`, `"INFEASIBLE"`, `"UNBOUNDED"`, `"TIME_LIMIT"`, etc.). |
-| `StatusCode` | int | Numeric status code (`OPTIMAL=1`, `INFEASIBLE=2`, `UNBOUNDED=3`, `ITERATION_LIMIT=4`, `TIME_LIMIT=5`, `UNSPECIFIED=-1`). |
+| `Status` | int | Integer termination status code; compare against `cupdlpx.PDLP` constants: `OPTIMAL=0`, `PRIMAL_INFEASIBLE=1`, `DUAL_INFEASIBLE=2`, `TIME_LIMIT=3`, `ITERATION_LIMIT=4`, `INFEASIBLE_OR_UNBOUNDED=5`, `FEAS_POLISH_SUCCESS=6`, `UNSPECIFIED=-1`. |
+| `StatusName` | str | Human-readable status name, e.g. `"OPTIMAL"`, `"PRIMAL_INFEASIBLE"`. |
 | `ObjVal` | float | Primal objective value at termination (sign-adjusted according to `ModelSense`). |
 | `DualObj` | float | Dual objective value at termination. |
 | `Gap` | float | Absolute primal-dual gap. |
@@ -225,7 +228,7 @@ All solution-related information can then be queried directly from the `Model` o
 ```python
 m.optimize()
 
-print("Status:", m.Status, "(code:", m.StatusCode, ")")
+print("Status:", m.StatusName, "(code:", m.Status, ")")
 print("Primal objective:", m.ObjVal)
 print("Dual objective:", m.DualObj)
 print("Relative gap:", m.RelGap)
@@ -268,7 +271,7 @@ m.setWarmStart(primal=x_init)
 m.setWarmStart(dual=pi_init)
 ```
 
-If the warm-start vectors have incorrect dimensions, the solver automatically falls back to a cold start and issues a warning.
+If the warm-start vectors have incorrect dimensions, `setWarmStart` raises a `ValueError`. Omitting an argument leaves that side unchanged; passing `None` clears it.
 
 To clear existing warm-start values:
 

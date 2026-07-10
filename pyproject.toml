@@ -52,7 +52,7 @@ test = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["test"]
 addopts = """
 -q
 -ra

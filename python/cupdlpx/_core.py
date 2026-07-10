@@ -12,4 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Thin re-export of the compiled cuPDLPx core extension (_cupdlpx_core)."""
+
 from ._cupdlpx_core import solve_once, get_default_params, read_mps

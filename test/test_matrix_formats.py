@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import numpy as np
-from cupdlpx import Model
+from cupdlpx import Model, PDLP
 import scipy.sparse as sp
 
 def test_csr(base_lp_data, atol):
@@ -30,7 +30,7 @@ def test_csr(base_lp_data, atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # check primal solution
     assert hasattr(model, "X"), "Model.X (primal solution) not exposed."
     assert np.allclose(model.X, [1, 2], atol=atol), f"Unexpected primal solution: {model.X}"
@@ -56,7 +56,7 @@ def test_csc(base_lp_data, atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # check primal solution
     assert hasattr(model, "X"), "Model.X (primal solution) not exposed."
     assert np.allclose(model.X, [1, 2], atol=atol), f"Unexpected primal solution: {model.X}"
@@ -82,7 +82,7 @@ def test_coo(base_lp_data, atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # check primal solution
     assert hasattr(model, "X"), "Model.X (primal solution) not exposed."
     assert np.allclose(model.X, [1, 2], atol=atol), f"Unexpected primal solution: {model.X}"

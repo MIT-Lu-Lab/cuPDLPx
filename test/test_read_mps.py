@@ -146,7 +146,7 @@ def test_read_and_optimize_minimize(mps_min_file, atol):
     model = cupdlpx.read(str(mps_min_file))
     model.setParams(OutputFlag=False, Presolve=False)
     model.optimize()
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     assert np.allclose(model.X, [1, 2], atol=atol), f"Unexpected primal solution: {model.X}"
     assert np.isclose(model.ObjVal, 3, atol=atol), f"Unexpected objective value: {model.ObjVal}"
 
@@ -159,6 +159,6 @@ def test_read_and_optimize_maximize(mps_max_file, atol):
     model = cupdlpx.read(str(mps_max_file))
     model.setParams(OutputFlag=False, Presolve=False)
     model.optimize()
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     assert np.allclose(model.X, [1.5, 1.75], atol=atol), f"Unexpected primal solution: {model.X}"
     assert np.isclose(model.ObjVal, 3.25, atol=atol), f"Unexpected objective value: {model.ObjVal}"

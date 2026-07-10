@@ -58,12 +58,18 @@ dkms.conf
 # ignored files
 build/*
 test/*
+!test/*.py
 /.vscode
 /.venv
 /_b
 *.whl
 *.pyc
 
+# coverage / pytest artifacts
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
 
 *.txt
 *.sh

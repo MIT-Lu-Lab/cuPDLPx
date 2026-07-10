@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -226,9 +227,35 @@ static int status_to_code(termination_reason_t r)
             return 4;
         case TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED:
             return 5;
+        case TERMINATION_REASON_FEAS_POLISH_SUCCESS:
+            return 6;
         case TERMINATION_REASON_UNSPECIFIED:
         default:
             return -1;
+    }
+}
+
+static void validate_result_dimensions(const cupdlpx_result_t *res, int expected_n, int expected_m)
+{
+    if (res->num_variables != expected_n || res->num_constraints != expected_m)
+    {
+        throw std::runtime_error("solve_lp_problem returned result dimensions " +
+                                 std::to_string(res->num_variables) + "x" +
+                                 std::to_string(res->num_constraints) +
+                                 ", expected " + std::to_string(expected_n) +
+                                 "x" + std::to_string(expected_m) + ".");
+    }
+    if (expected_n > 0 && !res->primal_solution)
+    {
+        throw std::runtime_error("solve_lp_problem returned NULL primal_solution.");
+    }
+    if (expected_m > 0 && !res->dual_solution)
+    {
+        throw std::runtime_error("solve_lp_problem returned NULL dual_solution.");
+    }
+    if (expected_n > 0 && !res->reduced_cost)
+    {
+        throw std::runtime_error("solve_lp_problem returned NULL reduced_cost.");
     }
 }
 
@@ -294,17 +321,42 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     auto getf = [&](const char *k, double &tgt)
     {
         if (d.contains(k))
-            tgt = py::cast<double>(d[k]);
+        {
+            py::object val = d[k];
+            if (py::isinstance<py::bool_>(val))
+            {
+                throw std::invalid_argument(std::string(k) + " must be a number.");
+            }
+            tgt = py::cast<double>(val);
+            if (!std::isfinite(tgt))
+            {
+                throw std::invalid_argument(std::string(k) + " must be finite.");
+            }
+        }
     };
     auto geti = [&](const char *k, int &tgt)
     {
         if (d.contains(k))
-            tgt = py::cast<int>(d[k]);
+        {
+            py::object val = d[k];
+            if (py::isinstance<py::bool_>(val) || !py::isinstance<py::int_>(val))
+            {
+                throw std::invalid_argument(std::string(k) + " must be an int.");
+            }
+            tgt = py::cast<int>(val);
+        }
     };
     auto getb = [&](const char *k, bool &tgt)
     {
         if (d.contains(k))
-            tgt = py::cast<bool>(d[k]);
+        {
+            py::object val = d[k];
+            if (!py::isinstance<py::bool_>(val))
+            {
+                throw std::invalid_argument(std::string(k) + " must be a bool.");
+            }
+            tgt = py::cast<bool>(val);
+        }
     };
     auto get_norm = [&](const char *k, norm_type_t &tgt)
     {
@@ -364,6 +416,131 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     getb("presolve", p->presolve);
 
     getf("matrix_zero_tol", p->matrix_zero_tol);
+
+    if (p->termination_evaluation_frequency <= 0)
+        throw std::invalid_argument("termination_evaluation_frequency must be positive.");
+    if (p->termination_criteria.iteration_limit < 0)
+        throw std::invalid_argument("iteration_limit must be nonnegative.");
+    if (p->l_inf_ruiz_iterations < 0)
+        throw std::invalid_argument("l_inf_ruiz_iterations must be nonnegative.");
+    if (p->sv_max_iter <= 0)
+        throw std::invalid_argument("sv_max_iter must be positive.");
+    if (p->termination_criteria.eps_optimal_relative <= 0.0)
+        throw std::invalid_argument("eps_optimal_relative must be positive.");
+    if (p->termination_criteria.eps_feasible_relative <= 0.0)
+        throw std::invalid_argument("eps_feasible_relative must be positive.");
+    if (p->termination_criteria.eps_feas_polish_relative <= 0.0)
+        throw std::invalid_argument("eps_feas_polish_relative must be positive.");
+    if (p->sv_tol <= 0.0)
+        throw std::invalid_argument("sv_tol must be positive.");
+    if (p->termination_criteria.time_sec_limit < 0.0)
+        throw std::invalid_argument("time_sec_limit must be nonnegative.");
+    if (p->matrix_zero_tol < 0.0)
+        throw std::invalid_argument("matrix_zero_tol must be nonnegative.");
+}
+
+// throw if a 1D array's length differs from the expected value
+static void expect_len(py::object obj, py::ssize_t expected, const char *name)
+{
+    py::array arr = py::cast<py::array>(obj);
+    if (arr.ndim() != 1)
+    {
+        throw std::invalid_argument(std::string(name) + " must be 1D.");
+    }
+    if (arr.size() != expected)
+    {
+        throw std::invalid_argument(std::string(name) + " has wrong length: expected " +
+                                    std::to_string(expected) + ", got " + std::to_string((long long)arr.size()));
+    }
+}
+
+static void validate_finite_array(const double *data, py::ssize_t size, const char *name)
+{
+    if (!data)
+    {
+        return;
+    }
+    for (py::ssize_t i = 0; i < size; ++i)
+    {
+        if (!std::isfinite(data[i]))
+        {
+            throw std::invalid_argument(std::string(name) + " must contain only finite values.");
+        }
+    }
+}
+
+static void validate_no_nan_array(const double *data, py::ssize_t size, const char *name)
+{
+    if (!data)
+    {
+        return;
+    }
+    for (py::ssize_t i = 0; i < size; ++i)
+    {
+        if (std::isnan(data[i]))
+        {
+            throw std::invalid_argument(std::string(name) + " must not contain NaN.");
+        }
+    }
+}
+
+static void validate_bounds(const double *lower, const double *upper, int size, const char *name)
+{
+    if (!lower || !upper)
+    {
+        return;
+    }
+    for (int i = 0; i < size; ++i)
+    {
+        if (lower[i] > upper[i])
+        {
+            throw std::invalid_argument(std::string(name) + ": lower bounds must be <= upper bounds.");
+        }
+    }
+}
+
+// validate a compressed (CSR/CSC) index structure
+static void validate_compressed(const int32_t *indptr, const int32_t *indices, int major, int minor, int nnz,
+                                const char *fmt)
+{
+    if (indptr[0] != 0)
+    {
+        throw std::invalid_argument(std::string(fmt) + ".indptr[0] must be 0.");
+    }
+    for (int i = 0; i < major; ++i)
+    {
+        if (indptr[i] > indptr[i + 1])
+        {
+            throw std::invalid_argument(std::string(fmt) + ".indptr must be non-decreasing.");
+        }
+    }
+    if (indptr[major] != nnz)
+    {
+        throw std::invalid_argument(std::string(fmt) + ".indptr[-1] must equal nnz.");
+    }
+    for (int k = 0; k < nnz; ++k)
+    {
+        if (indices[k] < 0 || indices[k] >= minor)
+        {
+            throw std::invalid_argument(std::string(fmt) + " has an index out of range [0, dim).");
+        }
+    }
+}
+
+// validate COO row/column indices are within [0, m) and [0, n) respectively
+static void validate_coo(const int32_t *row, const int32_t *col, int m, int n, int nnz)
+{
+    for (int k = 0; k < nnz; ++k)
+    {
+        if (row[k] < 0 || row[k] >= m)
+        {
+            throw std::invalid_argument("coo.row has an index out of range [0, m).");
+        }
+        if (col[k] < 0 || col[k] >= n)
+        {
+            throw std::invalid_argument("coo.col has an index out of range [0, n).");
+        }
+    }
 }
 
 // view of matrix from Python
@@ -394,6 +571,7 @@ static PyMatrixView get_matrix_from_python(py::object A)
         {
             throw std::invalid_argument("dense matrix must be 2D");
         }
+        validate_finite_array(static_cast<const double *>(req.ptr), d.size(), "dense matrix");
         desc.m = static_cast<int>(req.shape[0]);
         desc.n = static_cast<int>(req.shape[1]);
         desc.fmt = matrix_dense;
@@ -413,11 +591,17 @@ static PyMatrixView get_matrix_from_python(py::object A)
         py::object ci = A.attr("indices");
         py::object vv = A.attr("data");
         py::array v64 = get_array_f64_c_contig(vv, "csr.data(float64)"); // get contiguous data array
+        validate_finite_array(static_cast<const double *>(v64.request().ptr), v64.size(), "csr.data");
         desc.fmt = matrix_csr;
         desc.data.csr.nnz = static_cast<int>(v64.size());
+        // check index array lengths before dereferencing
+        expect_len(rp, static_cast<py::ssize_t>(desc.m) + 1, "csr.indptr");
+        expect_len(ci, static_cast<py::ssize_t>(desc.data.csr.nnz), "csr.indices");
         desc.data.csr.row_ptr = get_index_ptr_i32(rp, "csr.indptr", out.keep, out.keep.tmp_rowptr);
         desc.data.csr.col_ind = get_index_ptr_i32(ci, "csr.indices", out.keep, out.keep.tmp_colind);
         desc.data.csr.vals = static_cast<const double *>(v64.request().ptr);
+        // validate structure (protects the public solve_once entry)
+        validate_compressed(desc.data.csr.row_ptr, desc.data.csr.col_ind, desc.m, desc.n, desc.data.csr.nnz, "csr");
         out.keep.owners.push_back(v64); // keep alive
         return out;
     }
@@ -428,11 +612,17 @@ static PyMatrixView get_matrix_from_python(py::object A)
         py::object ri = A.attr("indices");
         py::object vv = A.attr("data");
         py::array v64 = get_array_f64_c_contig(vv, "csc.data(float64)"); // get contiguous data array
+        validate_finite_array(static_cast<const double *>(v64.request().ptr), v64.size(), "csc.data");
         desc.fmt = matrix_csc;
         desc.data.csc.nnz = static_cast<int>(v64.size());
+        // check index array lengths before dereferencing
+        expect_len(cp, static_cast<py::ssize_t>(desc.n) + 1, "csc.indptr");
+        expect_len(ri, static_cast<py::ssize_t>(desc.data.csc.nnz), "csc.indices");
         desc.data.csc.col_ptr = get_index_ptr_i32(cp, "csc.indptr", out.keep, out.keep.tmp_rowptr);
         desc.data.csc.row_ind = get_index_ptr_i32(ri, "csc.indices", out.keep, out.keep.tmp_colind);
         desc.data.csc.vals = static_cast<const double *>(v64.request().ptr);
+        // validate structure (major=n, minor=m for CSC)
+        validate_compressed(desc.data.csc.col_ptr, desc.data.csc.row_ind, desc.n, desc.m, desc.data.csc.nnz, "csc");
         out.keep.owners.push_back(v64); // keep alive
         return out;
     }
@@ -443,11 +633,17 @@ static PyMatrixView get_matrix_from_python(py::object A)
         py::object cc = A.attr("col");
         py::object vv = A.attr("data");
         py::array v64 = get_array_f64_c_contig(vv, "coo.data(float64)"); // get contiguous data array
+        validate_finite_array(static_cast<const double *>(v64.request().ptr), v64.size(), "coo.data");
         desc.fmt = matrix_coo;
         desc.data.coo.nnz = static_cast<int>(v64.size());
+        // check index array lengths before dereferencing
+        expect_len(rr, static_cast<py::ssize_t>(desc.data.coo.nnz), "coo.row");
+        expect_len(cc, static_cast<py::ssize_t>(desc.data.coo.nnz), "coo.col");
         desc.data.coo.row_ind = get_index_ptr_i32(rr, "coo.row", out.keep, out.keep.tmp_row);
         desc.data.coo.col_ind = get_index_ptr_i32(cc, "coo.col", out.keep, out.keep.tmp_col);
         desc.data.coo.vals = static_cast<const double *>(v64.request().ptr);
+        // validate indices are within [0, m) x [0, n)
+        validate_coo(desc.data.coo.row_ind, desc.data.coo.col_ind, desc.m, desc.n, desc.data.coo.nnz);
         out.keep.owners.push_back(v64); // keep alive
         return out;
     }
@@ -460,7 +656,7 @@ static PyMatrixView get_matrix_from_python(py::object A)
 static py::dict solve_once(py::object A,
                            py::object objective_vector,          // c
                            py::object objective_constant,        // c0 (optional → 0)
-                           py::object variable_lower_bound,      // lb (optional → 0)
+                           py::object variable_lower_bound,      // lb (optional → -inf)
                            py::object variable_upper_bound,      // ub (optional → inf)
                            py::object constraint_lower_bound,    // l  (optional → -inf)
                            py::object constraint_upper_bound,    // u  (optional → inf)
@@ -485,12 +681,23 @@ static py::dict solve_once(py::object A,
     const double *ub_ptr = get_arr_ptr_f64_or_null(variable_upper_bound, "variable_upper_bound", view.keep);
     const double *l_ptr = get_arr_ptr_f64_or_null(constraint_lower_bound, "constraint_lower_bound", view.keep);
     const double *u_ptr = get_arr_ptr_f64_or_null(constraint_upper_bound, "constraint_upper_bound", view.keep);
+    validate_finite_array(c_ptr, n, "objective_vector");
+    validate_no_nan_array(lb_ptr, n, "variable_lower_bound");
+    validate_no_nan_array(ub_ptr, n, "variable_upper_bound");
+    validate_no_nan_array(l_ptr, m, "constraint_lower_bound");
+    validate_no_nan_array(u_ptr, m, "constraint_upper_bound");
+    validate_bounds(lb_ptr, ub_ptr, n, "variable bounds");
+    validate_bounds(l_ptr, u_ptr, m, "constraint bounds");
     // get objective constant
     double c0_local = 0.0;
     double *c0_ptr = nullptr;
     if (objective_constant && !objective_constant.is_none())
     {
         c0_local = py::cast<double>(objective_constant);
+        if (!std::isfinite(c0_local))
+        {
+            throw std::invalid_argument("objective_constant must be finite.");
+        }
         c0_ptr = &c0_local;
     }
 
@@ -509,6 +716,8 @@ static py::dict solve_once(py::object A,
     {
         throw std::runtime_error("create_lp_problem failed.");
     }
+    // free the problem even if a conversion/validation below throws
+    std::unique_ptr<lp_problem_t, decltype(&lp_problem_free)> prob_guard(prob, &lp_problem_free);
 
     // set warm start values if provided
     if ((primal_start && !primal_start.is_none()) || (dual_start && !dual_start.is_none()))
@@ -518,6 +727,8 @@ static py::dict solve_once(py::object A,
         ensure_len_or_null(dual_start, "dual_start", m);
         const double *primal_ptr = get_arr_ptr_f64_or_null(primal_start, "primal_start", view.keep);
         const double *dual_ptr = get_arr_ptr_f64_or_null(dual_start, "dual_start", view.keep);
+        validate_finite_array(primal_ptr, n, "primal_start");
+        validate_finite_array(dual_ptr, m, "dual_start");
 
         set_start_values(prob, primal_ptr, dual_ptr);
     }
@@ -532,13 +743,17 @@ static py::dict solve_once(py::object A,
         py::gil_scoped_release release;
         res = solve_lp_problem(prob, &local_params);
     }
-    lp_problem_free(prob);
+    // problem is no longer needed once the solve returns
+    prob_guard.reset();
     if (!res)
     {
         throw std::runtime_error("solve_lp_problem returned NULL.");
     }
+    // free the result even if a conversion below throws
+    std::unique_ptr<cupdlpx_result_t, decltype(&cupdlpx_result_free)> res_guard(res, &cupdlpx_result_free);
 
     // parse result
+    validate_result_dimensions(res, n, m);
     const int n_out = res->num_variables;
     const int m_out = res->num_constraints;
     py::array_t<double> x({n_out});
@@ -546,9 +761,15 @@ static py::dict solve_once(py::object A,
     py::array_t<double> rc({n_out});
     {
         auto xb = x.request(), yb = y.request(), rcb = rc.request();
-        std::memcpy(xb.ptr, res->primal_solution, sizeof(double) * n_out);
-        std::memcpy(yb.ptr, res->dual_solution, sizeof(double) * m_out);
-        std::memcpy(rcb.ptr, res->reduced_cost, sizeof(double) * n_out);
+        if (n_out > 0)
+        {
+            std::memcpy(xb.ptr, res->primal_solution, sizeof(double) * n_out);
+            std::memcpy(rcb.ptr, res->reduced_cost, sizeof(double) * n_out);
+        }
+        if (m_out > 0)
+        {
+            std::memcpy(yb.ptr, res->dual_solution, sizeof(double) * m_out);
+        }
     }
     // build info dict
     py::dict info;
@@ -576,9 +797,7 @@ static py::dict solve_once(py::object A,
     info["PrimalRayLinObj"] = res->primal_ray_linear_objective;
     info["DualRayObj"] = res->dual_ray_objective;
 
-    // free result
-    cupdlpx_result_free(res);
-
+    // res freed by res_guard on return
     return info;
 }
 

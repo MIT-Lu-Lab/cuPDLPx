@@ -50,7 +50,7 @@ def test_feasibility_polishing():
     m.optimize()
 
     # 4. Sanity checks
-    assert m.Status == "OPTIMAL", f"unexpected status: {m.Status}"
+    assert m.Status == PDLP.OPTIMAL, f"unexpected status: {m.Status}"
     assert hasattr(m, "X") and hasattr(m, "ObjVal")
 
     # 5. Feasibility-quality check: max violation < 1e-10

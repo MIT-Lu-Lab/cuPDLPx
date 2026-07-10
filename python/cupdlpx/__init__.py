@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""cuPDLPx: Python bindings for the GPU-accelerated first-order LP solver."""
+
 import os
 import platform
 
 # Windows only: register CUDA bin for dependent DLL loading.
-if platform.system() == "Windows":
+if platform.system() == "Windows":  # pragma: no cover
     cuda_path = os.environ.get("CUDA_PATH")
     if cuda_path:
         bin_path = os.path.join(cuda_path, "bin")
@@ -26,12 +28,12 @@ if platform.system() == "Windows":
 from .model import Model, read
 from . import PDLP
 
-__all__ = ["Model", "read"]
-
 # versioning
 from importlib.metadata import version, PackageNotFoundError
 # get version from package metadata (toml file)
 try:
     __version__ = version("cupdlpx")
-except PackageNotFoundError:
+except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0"
+
+__all__ = ["Model", "PDLP", "read", "__version__"]

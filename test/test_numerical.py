@@ -14,7 +14,7 @@
 
 import numpy as np
 import scipy.sparse as sp
-from cupdlpx import Model
+from cupdlpx import Model, PDLP
 
 SEED = 42
 
@@ -38,7 +38,7 @@ def test_random_sparse_lp(atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # primal objective
     obj_primal = c @ model.X
     # dual objective

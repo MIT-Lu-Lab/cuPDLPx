@@ -25,7 +25,7 @@ def test_smoke_optimize_runs(base_lp_data):
     # turn off output
     model.setParams(OutputFlag=False, Presolve=False)
     # optimize
-    model.optimize()
+    assert model.optimize() is model
 
 def test_minimize_solution_correct(base_lp_data, atol):
     """
@@ -47,7 +47,7 @@ def test_minimize_solution_correct(base_lp_data, atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # check primal solution
     assert hasattr(model, "X"), "Model.X (primal solution) not exposed."
     assert np.allclose(model.X, [1, 2], atol=atol), f"Unexpected primal solution: {model.X}"
@@ -76,17 +76,14 @@ def test_maximize_solution_correct(base_lp_data, atol):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)
     # model sense
-    try:
-        model.ModelSense = PDLP.MAXIMIZE
-    except Exception as e:
-        print(f"cuPDLPx: failed to set model sense to MAXIMIZE.")
+    model.ModelSense = PDLP.MAXIMIZE
     # turn off output
     model.setParams(OutputFlag=False, Presolve=False)
     # optimize
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # check primal solution
     assert hasattr(model, "X"), "Model.X (primal solution) not exposed."
     assert np.allclose(model.X, [1.5, 1.75], atol=atol), f"Unexpected primal solution: {model.X}"

@@ -35,7 +35,7 @@ def test_presolve_as_optimal(base_lp_data, atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "OPTIMAL", f"Unexpected termination status: {model.Status}"
+    assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     # check primal solution
     assert hasattr(model, "X"), "Model.X (primal solution) not exposed."
     assert np.allclose(model.X, [1, 2], atol=atol), f"Unexpected primal solution: {model.X}"
@@ -72,8 +72,7 @@ def test_presolve_as_infeasible(base_lp_data, atol):
     model.optimize()
     # check status
     assert hasattr(model, "Status"), "Model.Status not exposed."
-    assert model.Status == "PRIMAL_INFEASIBLE", f"Unexpected termination status: {model.Status}"
-    assert model.StatusCode == PDLP.PRIMAL_INFEASIBLE, f"Unexpected termination status code: {model.StatusCode}"
+    assert model.Status == PDLP.PRIMAL_INFEASIBLE, f"Unexpected termination status: {model.Status}"
     # check dual ray
     #assert model.DualRayObj > atol, f"DualRayObj should be positive for dual infeasible, got {model.DualRayObj}"
 
