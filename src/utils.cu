@@ -157,7 +157,7 @@ double estimate_maximum_singular_value(cusparseHandle_t sparse_handle,
         double residual_norm;
         CUBLAS_CHECK(cublasDnrm2_v2_64(blas_handle, m, next_eigenvector_d, 1, &residual_norm));
 
-        if (residual_norm < tolerance)
+        if (residual_norm < tolerance * fmin(1.0, sigma_max_sq))
             break;
     }
 
