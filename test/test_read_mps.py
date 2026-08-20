@@ -162,3 +162,117 @@ def test_read_and_optimize_maximize(mps_max_file, atol):
     assert model.Status == PDLP.OPTIMAL, f"Unexpected termination status: {model.Status}"
     assert np.allclose(model.X, [1.5, 1.75], atol=atol), f"Unexpected primal solution: {model.X}"
     assert np.isclose(model.ObjVal, 3.25, atol=atol), f"Unexpected objective value: {model.ObjVal}"
+
+
+# ---------------------------------------------------------------------------
+# BOUNDS-section semantics
+# ---------------------------------------------------------------------------
+
+MPS_BOUNDS = """NAME          BOUNDS
+ROWS
+ N  COST
+ L  R1
+COLUMNS
+    C0        COST      1.0   R1        1.0
+    MARKER                 'MARKER'                 'INTORG'
+    I1        COST      1.0   R1        1.0
+    I2        COST      1.0   R1        1.0
+    I3        COST      1.0   R1        1.0
+    I4        COST      1.0   R1        1.0
+    I5        COST      1.0   R1        1.0
+    MARKER                 'MARKER'                 'INTEND'
+    C6        COST      1.0   R1        1.0
+    C7        COST      1.0   R1        1.0
+    C8        COST      1.0   R1        1.0
+RHS
+    RHS       R1        5.0
+BOUNDS
+ UP BND       I2        5.0
+ LO BND       I3        2.0
+ MI BND       I4
+ UP BND       I5        -3.0
+ UP BND       C6        -3.0
+ LO BND       C7        -10.0
+ UP BND       C7        -3.0
+ LO BND       C8        -1e30
+ UP BND       C8        1e20
+ENDATA
+"""
+
+
+def _read_text(tmp_path, name, text):
+    path = tmp_path / name
+    path.write_text(text)
+    return cupdlpx.read(path)
+
+
+def test_read_bounds_conventions(tmp_path):
+    """
+    - integer (MARKER) columns with no BOUNDS entry default to [0, 1]
+    - any BOUNDS entry on such a column cancels that default
+    - negative UP with no explicit lower bound implies lb = -inf, but an
+      explicit lower bound (C7) is kept
+    - |bound| >= 1e20 is treated as infinite
+    """
+    model = _read_text(tmp_path, "bounds.mps", MPS_BOUNDS)
+    inf = np.inf
+    #              C0   I1   I2   I3   I4    I5    C6    C7     C8
+    expected_lb = [0.0, 0.0, 0.0, 2.0, -inf, -inf, -inf, -10.0, -inf]
+    expected_ub = [inf, 1.0, 5.0, inf, inf, -3.0, -3.0, -3.0, inf]
+    assert np.array_equal(model.lb, expected_lb), model.lb
+    assert np.array_equal(model.ub, expected_ub), model.ub
+
+
+MPS_NO_OBJ_ROW = """NAME          NOOBJ
+ROWS
+ E  R1
+ L  R2
+COLUMNS
+    X1        R1        1.0   R2        1.0
+    X2        R1        2.0
+RHS
+    RHS       R1        5.0   R2        2.0
+ENDATA
+"""
+
+
+def test_read_without_objective_row(tmp_path):
+    """
+    A file with no N row has a zero objective; all rows stay constraints
+    (previously the first row was silently taken as the objective).
+    """
+    model = _read_text(tmp_path, "noobj.mps", MPS_NO_OBJ_ROW)
+    assert model.num_vars == 2
+    assert model.num_constrs == 2
+    assert np.allclose(model.c, [0.0, 0.0])
+    assert np.allclose(model.constr_lb, [5.0, -np.inf])
+    assert np.allclose(model.constr_ub, [5.0, 2.0])
+
+
+MPS_SOS = MPS_MIN.replace(
+    "ENDATA\n",
+    "SOS\n S1 SOS       s1\n    X1        1\n    X2        2\nENDATA\n",
+)
+
+MPS_QUADOBJ = MPS_MIN.replace(
+    "ENDATA\n",
+    "QUADOBJ\n    X1        X1        2.0\nENDATA\n",
+)
+
+
+def test_read_sos_section_is_ignored(tmp_path):
+    """
+    SOS only restricts the integer feasible set, so the LP relaxation is
+    unchanged and the section is skipped.
+    """
+    model = _read_text(tmp_path, "sos.mps", MPS_SOS)
+    _check_min_model_data(model)
+
+
+def test_read_unsupported_section_raises(tmp_path):
+    """
+    Sections that change the model beyond an LP (quadratic terms, cones,
+    indicators, ...) must not be silently dropped.
+    """
+    with pytest.raises(Exception):
+        _read_text(tmp_path, "quadobj.mps", MPS_QUADOBJ)
