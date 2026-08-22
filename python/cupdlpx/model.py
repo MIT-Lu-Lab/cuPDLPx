@@ -62,6 +62,7 @@ _FLOAT_PARAMS = frozenset(
         "eps_feas_polish_relative",
         "sv_tol",
         "matrix_zero_tol",
+        "infinite_bound",
     }
 )
 _POSITIVE_FLOAT_PARAMS = frozenset(
@@ -70,6 +71,7 @@ _POSITIVE_FLOAT_PARAMS = frozenset(
         "eps_feasible_relative",
         "eps_feas_polish_relative",
         "sv_tol",
+        "infinite_bound",
     }
 )
 _NONNEGATIVE_FLOAT_PARAMS = frozenset({"time_sec_limit", "matrix_zero_tol"})

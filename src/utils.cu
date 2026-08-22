@@ -329,7 +329,11 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->optimality_norm = NORM_TYPE_L2;
     params->presolve = true;
     params->matrix_zero_tol = 1e-9;
+    params->infinite_bound = 1e20;
 }
+
+#define MATRIX_LARGE_VALUE 1e15
+#define OBJECTIVE_LARGE_VALUE 1e20
 
 void filter_constraint_matrix_entries(lp_problem_t *out, const lp_problem_t *in, const pdhg_parameters_t *params)
 {
@@ -358,15 +362,34 @@ void filter_constraint_matrix_entries(lp_problem_t *out, const lp_problem_t *in,
     }
 
     int filtered_nnz = 0;
+    int num_large = 0;
+    double max_large = 0.0;
     for (int i = 0; i < num_rows; ++i)
     {
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
-            if (fabs(vals[k]) > params->matrix_zero_tol)
+            const double abs_value = fabs(vals[k]);
+            if (abs_value > params->matrix_zero_tol)
             {
                 ++filtered_nnz;
             }
+            if (abs_value >= MATRIX_LARGE_VALUE)
+            {
+                ++num_large;
+                if (abs_value > max_large)
+                    max_large = abs_value;
+            }
         }
+    }
+
+    if (num_large > 0)
+    {
+        fprintf(stderr,
+                "WARNING: %d constraint matrix %s |value| >= %.1e (largest %.3e); the problem is badly scaled.\n",
+                num_large,
+                (num_large == 1 ? "entry has" : "entries have"),
+                MATRIX_LARGE_VALUE,
+                max_large);
     }
 
     if (filtered_nnz == nnz)
@@ -412,6 +435,27 @@ void filter_constraint_matrix_entries(lp_problem_t *out, const lp_problem_t *in,
     out->constraint_matrix_num_nonzeros = filtered_nnz;
 }
 
+/* Bounds at or beyond +/-infinite_bound stand for an infinite bound. */
+static void replace_large_bounds_with_infinity(
+    const double *in_lower, const double *in_upper, double **lower, double **upper, int n, double infinite_bound)
+{
+    bool any = false;
+    for (int i = 0; i < n && !any; ++i)
+        any = in_lower[i] <= -infinite_bound || in_upper[i] >= infinite_bound;
+    if (!any)
+        return;
+
+    double *new_lower = (double *)safe_malloc((size_t)n * sizeof(double));
+    double *new_upper = (double *)safe_malloc((size_t)n * sizeof(double));
+    for (int i = 0; i < n; ++i)
+    {
+        new_lower[i] = (in_lower[i] <= -infinite_bound) ? -INFINITY : in_lower[i];
+        new_upper[i] = (in_upper[i] >= infinite_bound) ? INFINITY : in_upper[i];
+    }
+    *lower = new_lower;
+    *upper = new_upper;
+}
+
 lp_problem_t preprocess_problem(const lp_problem_t *original, const pdhg_parameters_t *params)
 {
     lp_problem_t working = *original;
@@ -426,6 +470,41 @@ lp_problem_t preprocess_problem(const lp_problem_t *original, const pdhg_paramet
         working.objective_constant = -original->objective_constant;
         working.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
     }
+    replace_large_bounds_with_infinity(original->variable_lower_bound,
+                                       original->variable_upper_bound,
+                                       &working.variable_lower_bound,
+                                       &working.variable_upper_bound,
+                                       original->num_variables,
+                                       params->infinite_bound);
+    replace_large_bounds_with_infinity(original->constraint_lower_bound,
+                                       original->constraint_upper_bound,
+                                       &working.constraint_lower_bound,
+                                       &working.constraint_upper_bound,
+                                       original->num_constraints,
+                                       params->infinite_bound);
+
+    int num_large_obj = 0;
+    double max_large_obj = 0.0;
+    for (int i = 0; i < original->num_variables; ++i)
+    {
+        const double abs_cost = fabs(original->objective_vector[i]);
+        if (abs_cost >= OBJECTIVE_LARGE_VALUE)
+        {
+            ++num_large_obj;
+            if (abs_cost > max_large_obj)
+                max_large_obj = abs_cost;
+        }
+    }
+    if (num_large_obj > 0)
+    {
+        fprintf(stderr,
+                "WARNING: %d objective %s |value| >= %.1e (largest %.3e); the problem is badly scaled.\n",
+                num_large_obj,
+                (num_large_obj == 1 ? "coefficient has" : "coefficients have"),
+                OBJECTIVE_LARGE_VALUE,
+                max_large_obj);
+    }
+
     filter_constraint_matrix_entries(&working, original, params);
     return working;
 }
@@ -434,6 +513,16 @@ void free_preprocessed_problem(const lp_problem_t *preprocessed, const lp_proble
 {
     if (preprocessed->objective_vector != original->objective_vector)
         free(preprocessed->objective_vector);
+    if (preprocessed->variable_lower_bound != original->variable_lower_bound)
+    {
+        free(preprocessed->variable_lower_bound);
+        free(preprocessed->variable_upper_bound);
+    }
+    if (preprocessed->constraint_lower_bound != original->constraint_lower_bound)
+    {
+        free(preprocessed->constraint_lower_bound);
+        free(preprocessed->constraint_upper_bound);
+    }
     if (preprocessed->constraint_matrix_values != original->constraint_matrix_values)
     {
         free(preprocessed->constraint_matrix_row_pointers);
@@ -536,6 +625,7 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
                    default_params.termination_criteria.eps_feas_polish_relative);
     PRINT_DIFF_BOOL("presolve", params->presolve, default_params.presolve);
     PRINT_DIFF_DBL("matrix_zero_tol", params->matrix_zero_tol, default_params.matrix_zero_tol);
+    PRINT_DIFF_DBL("infinite_bound", params->infinite_bound, default_params.infinite_bound);
 }
 
 #undef PRINT_DIFF_INT

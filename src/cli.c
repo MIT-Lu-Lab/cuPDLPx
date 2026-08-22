@@ -212,6 +212,9 @@ void print_usage(const char *prog_name)
     fprintf(stderr,
             "      --matrix_zero_tol <tolerance>.  "
             "Zero tolerance in constraint matrix.\n");
+    fprintf(stderr,
+            "      --infinite_bound <value>.       "
+            "Bounds at or beyond this are treated as infinite (default: 1e20).\n");
 }
 
 int main(int argc, char *argv[])
@@ -238,6 +241,7 @@ int main(int argc, char *argv[])
                                            {"opt_norm", required_argument, 0, 1014},
                                            {"no_presolve", no_argument, 0, 1015},
                                            {"matrix_zero_tol", required_argument, 0, 1016},
+                                           {"infinite_bound", required_argument, 0, 1017},
                                            {0, 0, 0, 0}};
 
     int opt;
@@ -316,6 +320,9 @@ int main(int argc, char *argv[])
                 break;
             case 1016: // --matrix_zero_tol
                 params.matrix_zero_tol = atof(optarg);
+                break;
+            case 1017: // --infinite_bound
+                params.infinite_bound = atof(optarg);
                 break;
             case '?': // Unknown option
                 return 1;

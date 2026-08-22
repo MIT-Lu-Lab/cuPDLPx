@@ -108,6 +108,7 @@ extern "C"
         norm_type_t optimality_norm;
         bool presolve;
         double matrix_zero_tol;
+        double infinite_bound;
     } pdhg_parameters_t;
 
     typedef struct
