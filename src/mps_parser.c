@@ -26,7 +26,6 @@ limitations under the License.
 #include <zlib.h>
 
 #define READER_BUFFER_SIZE (4 * 1024 * 1024)
-#define MPS_INFINITE_BOUND 1e20
 
 typedef struct NameNode
 {
@@ -425,25 +424,6 @@ static const char *const MPS_UNSUPPORTED_SECTIONS[] = {"QUADOBJ",
                                                        "PWLNAM",
                                                        "PWLCON"};
 
-/* Bounds at or beyond +/-1e20 are the conventional way of writing infinity in
- * MPS files; HiGHS applies the same threshold (options.infinite_bound). */
-static int apply_infinite_bounds(double *lower, double *upper, size_t n, const char *what)
-{
-    for (size_t i = 0; i < n; ++i)
-    {
-        if (lower[i] >= MPS_INFINITE_BOUND || upper[i] <= -MPS_INFINITE_BOUND)
-        {
-            fprintf(stderr, "ERROR: %s %zu has bounds [%g, %g].\n", what, i, lower[i], upper[i]);
-            return -1;
-        }
-        if (lower[i] <= -MPS_INFINITE_BOUND)
-            lower[i] = -INFINITY;
-        if (upper[i] >= MPS_INFINITE_BOUND)
-            upper[i] = INFINITY;
-    }
-    return 0;
-}
-
 lp_problem_t *read_mps_file(const char *filename)
 {
     MpsParserState state = {0};
@@ -611,14 +591,6 @@ lp_problem_t *read_mps_file(const char *filename)
             state.var_lower_bounds[i] = 0.0;
             state.var_upper_bounds[i] = 1.0;
         }
-    }
-
-    if (apply_infinite_bounds(state.var_lower_bounds, state.var_upper_bounds, state.col_map.size, "Column") != 0 ||
-        apply_infinite_bounds(
-            state.constraint_lower_bounds, state.constraint_upper_bounds, state.row_map.size, "Row") != 0)
-    {
-        free_parser_state(&state);
-        return NULL;
     }
 
     lp_problem_t *prob = safe_calloc(1, sizeof(lp_problem_t));

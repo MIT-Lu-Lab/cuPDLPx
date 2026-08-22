@@ -212,13 +212,15 @@ def test_read_bounds_conventions(tmp_path):
     - any BOUNDS entry on such a column cancels that default
     - negative UP with no explicit lower bound implies lb = -inf, but an
       explicit lower bound (C7) is kept
-    - |bound| >= 1e20 is treated as infinite
+
+    Large finite bounds (C8) are read as written; turning them into infinities
+    is the solver's infinite_bound parameter, not the reader's job.
     """
     model = _read_text(tmp_path, "bounds.mps", MPS_BOUNDS)
     inf = np.inf
     #              C0   I1   I2   I3   I4    I5    C6    C7     C8
-    expected_lb = [0.0, 0.0, 0.0, 2.0, -inf, -inf, -inf, -10.0, -inf]
-    expected_ub = [inf, 1.0, 5.0, inf, inf, -3.0, -3.0, -3.0, inf]
+    expected_lb = [0.0, 0.0, 0.0, 2.0, -inf, -inf, -inf, -10.0, -1e30]
+    expected_ub = [inf, 1.0, 5.0, inf, inf, -3.0, -3.0, -3.0, 1e20]
     assert np.array_equal(model.lb, expected_lb), model.lb
     assert np.array_equal(model.ub, expected_ub), model.ub
 
