@@ -64,4 +64,5 @@ _PARAM_ALIAS = {
     # presolve
     "Presolve": "presolve",
     "MatrixZeroTol": "matrix_zero_tol",
+    "InfiniteBound": "infinite_bound",
 }

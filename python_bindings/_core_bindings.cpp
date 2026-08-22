@@ -307,6 +307,7 @@ static py::dict get_default_params_py()
     d["presolve"] = p.presolve;
 
     d["matrix_zero_tol"] = p.matrix_zero_tol;
+    d["infinite_bound"] = p.infinite_bound;
 
     return d;
 }
@@ -416,6 +417,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     getb("presolve", p->presolve);
 
     getf("matrix_zero_tol", p->matrix_zero_tol);
+    getf("infinite_bound", p->infinite_bound);
 
     if (p->termination_evaluation_frequency <= 0)
         throw std::invalid_argument("termination_evaluation_frequency must be positive.");
@@ -435,6 +437,8 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
         throw std::invalid_argument("sv_tol must be positive.");
     if (p->termination_criteria.time_sec_limit < 0.0)
         throw std::invalid_argument("time_sec_limit must be nonnegative.");
+    if (p->infinite_bound <= 0.0)
+        throw std::invalid_argument("infinite_bound must be positive.");
     if (p->matrix_zero_tol < 0.0)
         throw std::invalid_argument("matrix_zero_tol must be nonnegative.");
 }
