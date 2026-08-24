@@ -109,6 +109,7 @@ extern "C"
         bool presolve;
         double matrix_zero_tol;
         double infinite_bound;
+        int geometric_mean_iterations;
     } pdhg_parameters_t;
 
     typedef struct

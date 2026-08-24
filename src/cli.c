@@ -180,6 +180,9 @@ void print_usage(const char *prog_name)
             "      --l_inf_ruiz_iter <int>         "
             "Iterations for L-inf Ruiz rescaling (default: 10).\n");
     fprintf(stderr,
+            "      --geo_mean_iter <int>           "
+            "Geometric-mean scaling sweeps before Ruiz (default: 12).\n");
+    fprintf(stderr,
             "      --no_pock_chambolle             "
             "Disable Pock-Chambolle rescaling (default: enabled).\n");
     fprintf(stderr,
@@ -232,6 +235,7 @@ int main(int argc, char *argv[])
                                            {"eps_feas_polish", required_argument, 0, 1006},
                                            {"feasibility_polishing", no_argument, 0, 'f'},
                                            {"l_inf_ruiz_iter", required_argument, 0, 1007},
+                                           {"geo_mean_iter", required_argument, 0, 1018},
                                            {"pock_chambolle_alpha", required_argument, 0, 1008},
                                            {"no_pock_chambolle", no_argument, 0, 1009},
                                            {"no_bound_obj_rescaling", no_argument, 0, 1010},
@@ -278,6 +282,9 @@ int main(int argc, char *argv[])
                 break;
             case 1007: // --l_inf_ruiz_iter
                 params.l_inf_ruiz_iterations = atoi(optarg);
+                break;
+            case 1018: // --geo_mean_iter
+                params.geometric_mean_iterations = atoi(optarg);
                 break;
             case 1008: // --pock_chambolle_alpha
                 params.pock_chambolle_alpha = atof(optarg);

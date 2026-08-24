@@ -109,6 +109,7 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
 | `--l_inf_ruiz_iter` | `int` | Iterations for L-inf Ruiz rescaling| `10` |
+| `--geo_mean_iter` | `int` | Sweeps of geometric-mean scaling, applied before Ruiz | `12` |
 | `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling | `enabled` |
 | `--pock_chambolle_alpha` | `float` | Value for Pock-Chambolle alpha | `1.0` |
 | `--no_bound_obj_rescaling` | `flag` | Disable bound objective rescaling | `enabled` |
