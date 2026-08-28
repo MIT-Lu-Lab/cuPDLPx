@@ -19,8 +19,6 @@ limitations under the License.
 
 #include <math.h>
 #include <stdio.h>
-#include <thrust/iterator/counting_iterator.h>
-#include <thrust/iterator/transform_iterator.h>
 #include <time.h>
 
 #define SCALING_EPSILON 1e-12
@@ -81,6 +79,7 @@ __global__ void scale_objective_kernel(double *__restrict__ objective_vector,
                                        double constraint_scale,
                                        double objective_scale);
 __global__ void fill_ones_kernel(double *__restrict__ x, int num_variables);
+__global__ void max_csr_row_length_kernel(const int *__restrict__ row_ptr, int num_rows, int *__restrict__ result);
 __global__ void geometric_mean_iteration_kernel(const int *__restrict__ row_ptr,
                                                 const int *__restrict__ col_ind,
                                                 const double *__restrict__ matrix_vals,
@@ -195,33 +194,16 @@ static int log2_vector_width(long long num_nonzeros, int num_rows, int longest_r
     return log2_width;
 }
 
-struct csr_row_nnz_op
-{
-    const int *row_ptr;
-    __host__ __device__ int operator()(int i) const
-    {
-        return row_ptr[i + 1] - row_ptr[i];
-    }
-};
-
 static void longest_csr_rows(const pdhg_solver_state_t *state, int *longest)
 {
     int *device_longest = NULL;
     CUDA_CHECK(cudaMalloc(&device_longest, 2 * sizeof(int)));
+    CUDA_CHECK(cudaMemset(device_longest, 0, 2 * sizeof(int)));
 
-    const csr_row_nnz_op row_nnz = {state->constraint_matrix->row_ptr};
-    const csr_row_nnz_op col_nnz = {state->constraint_matrix_t->row_ptr};
-    const auto row_lengths = thrust::make_transform_iterator(thrust::make_counting_iterator(0), row_nnz);
-    const auto col_lengths = thrust::make_transform_iterator(thrust::make_counting_iterator(0), col_nnz);
-
-    void *temp_storage = NULL;
-    size_t row_bytes = 0, col_bytes = 0;
-    CUDA_CHECK(cub::DeviceReduce::Max(temp_storage, row_bytes, row_lengths, device_longest, state->num_constraints));
-    CUDA_CHECK(cub::DeviceReduce::Max(temp_storage, col_bytes, col_lengths, device_longest + 1, state->num_variables));
-    CUDA_CHECK(cudaMalloc(&temp_storage, row_bytes > col_bytes ? row_bytes : col_bytes));
-    CUDA_CHECK(cub::DeviceReduce::Max(temp_storage, row_bytes, row_lengths, device_longest, state->num_constraints));
-    CUDA_CHECK(cub::DeviceReduce::Max(temp_storage, col_bytes, col_lengths, device_longest + 1, state->num_variables));
-    CUDA_CHECK(cudaFree(temp_storage));
+    max_csr_row_length_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix->row_ptr, state->num_constraints, device_longest);
+    max_csr_row_length_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix_t->row_ptr, state->num_variables, device_longest + 1);
 
     CUDA_CHECK(cudaMemcpy(longest, device_longest, 2 * sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaFree(device_longest));
@@ -632,6 +614,13 @@ __global__ void fill_ones_kernel(double *__restrict__ x, int num_variables)
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < num_variables)
         x[i] = 1.0;
+}
+
+__global__ void max_csr_row_length_kernel(const int *__restrict__ row_ptr, int num_rows, int *__restrict__ result)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < num_rows)
+        atomicMax(result, row_ptr[i + 1] - row_ptr[i]);
 }
 
 __global__ void geometric_mean_iteration_kernel(const int *__restrict__ row_ptr,
