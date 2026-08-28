@@ -81,13 +81,13 @@ __global__ void scale_objective_kernel(double *__restrict__ objective_vector,
                                        double constraint_scale,
                                        double objective_scale);
 __global__ void fill_ones_kernel(double *__restrict__ x, int num_variables);
-__global__ void geometric_mean_sweep_kernel(const int *__restrict__ row_ptr,
-                                            const int *__restrict__ col_ind,
-                                            const double *__restrict__ matrix_vals,
-                                            int num_rows,
-                                            int log2_width,
-                                            const double *__restrict__ other_multiplier,
-                                            double *__restrict__ multiplier);
+__global__ void geometric_mean_iteration_kernel(const int *__restrict__ row_ptr,
+                                                const int *__restrict__ col_ind,
+                                                const double *__restrict__ matrix_vals,
+                                                int num_rows,
+                                                int log2_width,
+                                                const double *__restrict__ other_multiplier,
+                                                double *__restrict__ multiplier);
 __global__ void geometric_mean_finalize_kernel(const double *__restrict__ multiplier,
                                                double *__restrict__ scaling_factors,
                                                double *__restrict__ cumulative_rescaling,
@@ -227,6 +227,10 @@ static void longest_csr_rows(const pdhg_solver_state_t *state, int *longest)
     CUDA_CHECK(cudaFree(device_longest));
 }
 
+// Geometric-mean scaling: each row/column is divided by sqrt(min * max) of the
+// absolute values of its nonzeros, alternating between rows and columns.
+// Reference: J.A. Tomlin, "On Scaling Linear Programming Problems,"
+// Mathematical Programming Study 4 (1975) 146-166.
 static void geometric_mean_rescaling(pdhg_solver_state_t *state,
                                      int num_iterations,
                                      rescale_info_t *rescale_info,
@@ -252,20 +256,20 @@ static void geometric_mean_rescaling(pdhg_solver_state_t *state,
 
     for (int iter = 0; iter < num_iterations; ++iter)
     {
-        geometric_mean_sweep_kernel<<<row_blocks, THREADS_PER_BLOCK>>>(state->constraint_matrix->row_ptr,
-                                                                       state->constraint_matrix->col_ind,
-                                                                       state->constraint_matrix->val,
-                                                                       num_constraints,
-                                                                       row_log2,
-                                                                       inverse_variable_rescaling,
-                                                                       inverse_constraint_rescaling);
-        geometric_mean_sweep_kernel<<<col_blocks, THREADS_PER_BLOCK>>>(state->constraint_matrix_t->row_ptr,
-                                                                       state->constraint_matrix_t->col_ind,
-                                                                       state->constraint_matrix_t->val,
-                                                                       num_variables,
-                                                                       col_log2,
-                                                                       inverse_constraint_rescaling,
-                                                                       inverse_variable_rescaling);
+        geometric_mean_iteration_kernel<<<row_blocks, THREADS_PER_BLOCK>>>(state->constraint_matrix->row_ptr,
+                                                                           state->constraint_matrix->col_ind,
+                                                                           state->constraint_matrix->val,
+                                                                           num_constraints,
+                                                                           row_log2,
+                                                                           inverse_variable_rescaling,
+                                                                           inverse_constraint_rescaling);
+        geometric_mean_iteration_kernel<<<col_blocks, THREADS_PER_BLOCK>>>(state->constraint_matrix_t->row_ptr,
+                                                                           state->constraint_matrix_t->col_ind,
+                                                                           state->constraint_matrix_t->val,
+                                                                           num_variables,
+                                                                           col_log2,
+                                                                           inverse_constraint_rescaling,
+                                                                           inverse_variable_rescaling);
     }
 
     geometric_mean_finalize_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
@@ -383,7 +387,7 @@ rescale_info_t *rescale_problem(const pdhg_parameters_t *params, pdhg_solver_sta
     {
         if (params->verbose)
         {
-            printf("  Geometric-mean scaling (%d sweeps)\n", params->geometric_mean_iterations);
+            printf("  Geometric-mean scaling (%d iterations)\n", params->geometric_mean_iterations);
         }
         geometric_mean_rescaling(state,
                                  params->geometric_mean_iterations,
@@ -630,13 +634,13 @@ __global__ void fill_ones_kernel(double *__restrict__ x, int num_variables)
         x[i] = 1.0;
 }
 
-__global__ void geometric_mean_sweep_kernel(const int *__restrict__ row_ptr,
-                                            const int *__restrict__ col_ind,
-                                            const double *__restrict__ matrix_vals,
-                                            int num_rows,
-                                            int log2_width,
-                                            const double *__restrict__ other_multiplier,
-                                            double *__restrict__ multiplier)
+__global__ void geometric_mean_iteration_kernel(const int *__restrict__ row_ptr,
+                                                const int *__restrict__ col_ind,
+                                                const double *__restrict__ matrix_vals,
+                                                int num_rows,
+                                                int log2_width,
+                                                const double *__restrict__ other_multiplier,
+                                                double *__restrict__ multiplier)
 {
     const int width = 1 << log2_width;
     const int groups_per_block = blockDim.x >> log2_width;
