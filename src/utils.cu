@@ -301,8 +301,8 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
 
 void set_default_parameters(pdhg_parameters_t *params)
 {
-    params->l_inf_ruiz_iterations = 10;
     params->geometric_mean_iterations = 12;
+    params->l_inf_ruiz_iterations = 10;
     params->has_pock_chambolle_alpha = true;
     params->pock_chambolle_alpha = 1.0;
     params->bound_objective_rescaling = true;
