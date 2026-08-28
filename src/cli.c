@@ -177,8 +177,11 @@ void print_usage(const char *prog_name)
             "      --eps_feas <tolerance>          "
             "Relative feasibility tolerance (default: 1e-4).\n");
     fprintf(stderr,
+            "      --geo_mean_iter <int>           "
+            "Iterations of geometric-mean scaling (default: 12).\n");
+    fprintf(stderr,
             "      --l_inf_ruiz_iter <int>         "
-            "Iterations for L-inf Ruiz rescaling (default: 10).\n");
+            "Iterations of L-inf Ruiz rescaling (default: 10).\n");
     fprintf(stderr,
             "      --no_pock_chambolle             "
             "Disable Pock-Chambolle rescaling (default: enabled).\n");
@@ -231,6 +234,7 @@ int main(int argc, char *argv[])
                                            {"eps_feas", required_argument, 0, 1004},
                                            {"eps_feas_polish", required_argument, 0, 1006},
                                            {"feasibility_polishing", no_argument, 0, 'f'},
+                                           {"geo_mean_iter", required_argument, 0, 1018},
                                            {"l_inf_ruiz_iter", required_argument, 0, 1007},
                                            {"pock_chambolle_alpha", required_argument, 0, 1008},
                                            {"no_pock_chambolle", no_argument, 0, 1009},
@@ -275,6 +279,9 @@ int main(int argc, char *argv[])
                 break;
             case 'f': // --feasibility_polishing
                 params.feasibility_polishing = true;
+                break;
+            case 1018: // --geo_mean_iter
+                params.geometric_mean_iterations = atoi(optarg);
                 break;
             case 1007: // --l_inf_ruiz_iter
                 params.l_inf_ruiz_iterations = atoi(optarg);

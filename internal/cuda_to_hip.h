@@ -70,6 +70,11 @@ limitations under the License.
 // Device synchronization
 #define cudaDeviceSynchronize hipDeviceSynchronize
 
+// Warp-level primitives. AMD wavefronts are 64 lanes, so CUDA's 32-bit full
+// mask would be rejected; the width-limited non-sync shuffle has the same
+// sub-group semantics on HIP.
+#define __shfl_down_sync(mask, var, delta, width) __shfl_down(var, delta, width)
+
 // ----------------------------------------------------------------------------
 // CUDA Graph API -> HIP Graph API
 // ----------------------------------------------------------------------------

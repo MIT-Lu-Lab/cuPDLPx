@@ -23,6 +23,10 @@ limitations under the License.
 
 #define SCALING_EPSILON 1e-12
 
+#define GEOMETRIC_MEAN_MULTIPLIER_MAX 1e20
+
+#define MAX_LOG2_VECTOR_WIDTH 5
+
 __global__ void scale_variables_kernel(double *__restrict__ objective_vector,
                                        double *__restrict__ variable_lower_bound,
                                        double *__restrict__ variable_upper_bound,
@@ -75,6 +79,18 @@ __global__ void scale_objective_kernel(double *__restrict__ objective_vector,
                                        double constraint_scale,
                                        double objective_scale);
 __global__ void fill_ones_kernel(double *__restrict__ x, int num_variables);
+__global__ void max_csr_row_length_kernel(const int *__restrict__ row_ptr, int num_rows, int *__restrict__ result);
+__global__ void geometric_mean_iteration_kernel(const int *__restrict__ row_ptr,
+                                                const int *__restrict__ col_ind,
+                                                const double *__restrict__ matrix_vals,
+                                                int num_rows,
+                                                int log2_width,
+                                                const double *__restrict__ other_multiplier,
+                                                double *__restrict__ multiplier);
+__global__ void geometric_mean_finalize_kernel(const double *__restrict__ multiplier,
+                                               double *__restrict__ scaling_factors,
+                                               double *__restrict__ cumulative_rescaling,
+                                               int n);
 static void scale_problem(pdhg_solver_state_t *state,
                           double *constraint_rescaling,
                           double *variable_rescaling,
@@ -87,6 +103,13 @@ static void ruiz_rescaling(pdhg_solver_state_t *state,
                            double *variable_rescaling,
                            double *inverse_constraint_rescaling,
                            double *inverse_variable_rescaling);
+static void geometric_mean_rescaling(pdhg_solver_state_t *state,
+                                     int num_iterations,
+                                     rescale_info_t *rescale_info,
+                                     double *constraint_rescaling,
+                                     double *variable_rescaling,
+                                     double *inverse_constraint_rescaling,
+                                     double *inverse_variable_rescaling);
 static void pock_chambolle_rescaling(pdhg_solver_state_t *state,
                                      const double alpha,
                                      rescale_info_t *rescale_info,
@@ -156,6 +179,88 @@ static void ruiz_rescaling(pdhg_solver_state_t *state,
         scale_problem(
             state, constraint_rescaling, variable_rescaling, inverse_constraint_rescaling, inverse_variable_rescaling);
     }
+}
+
+static int log2_vector_width(long long num_nonzeros, int num_rows, int longest_row)
+{
+    if (longest_row >= 512)
+        return MAX_LOG2_VECTOR_WIDTH;
+    if (num_rows <= 0)
+        return 0;
+    const long long mean_nnz = (num_nonzeros + num_rows - 1) / num_rows;
+    int log2_width = 0;
+    while (log2_width < MAX_LOG2_VECTOR_WIDTH && (1LL << log2_width) < mean_nnz)
+        ++log2_width;
+    return log2_width;
+}
+
+static void longest_csr_rows(const pdhg_solver_state_t *state, int *longest)
+{
+    int *device_longest = NULL;
+    CUDA_CHECK(cudaMalloc(&device_longest, 2 * sizeof(int)));
+    CUDA_CHECK(cudaMemset(device_longest, 0, 2 * sizeof(int)));
+
+    max_csr_row_length_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix->row_ptr, state->num_constraints, device_longest);
+    max_csr_row_length_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix_t->row_ptr, state->num_variables, device_longest + 1);
+
+    CUDA_CHECK(cudaMemcpy(longest, device_longest, 2 * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(device_longest));
+}
+
+// Geometric-mean scaling: each row/column is divided by sqrt(min * max) of the
+// absolute values of its nonzeros, alternating between rows and columns.
+// Reference: J.A. Tomlin, "On Scaling Linear Programming Problems,"
+// Mathematical Programming Study 4 (1975) 146-166.
+static void geometric_mean_rescaling(pdhg_solver_state_t *state,
+                                     int num_iterations,
+                                     rescale_info_t *rescale_info,
+                                     double *constraint_rescaling,
+                                     double *variable_rescaling,
+                                     double *inverse_constraint_rescaling,
+                                     double *inverse_variable_rescaling)
+{
+    const int num_constraints = state->num_constraints;
+    const int num_variables = state->num_variables;
+
+    fill_ones_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(inverse_constraint_rescaling, num_constraints);
+    fill_ones_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(inverse_variable_rescaling, num_variables);
+
+    int longest[2] = {0, 0};
+    longest_csr_rows(state, longest);
+    const long long num_nonzeros = state->constraint_matrix->num_nonzeros;
+    const int row_log2 = log2_vector_width(num_nonzeros, num_constraints, longest[0]);
+    const int col_log2 = log2_vector_width(num_nonzeros, num_variables, longest[1]);
+    const int row_blocks =
+        (int)((((long long)num_constraints << row_log2) + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK);
+    const int col_blocks = (int)((((long long)num_variables << col_log2) + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK);
+
+    for (int iter = 0; iter < num_iterations; ++iter)
+    {
+        geometric_mean_iteration_kernel<<<row_blocks, THREADS_PER_BLOCK>>>(state->constraint_matrix->row_ptr,
+                                                                           state->constraint_matrix->col_ind,
+                                                                           state->constraint_matrix->val,
+                                                                           num_constraints,
+                                                                           row_log2,
+                                                                           inverse_variable_rescaling,
+                                                                           inverse_constraint_rescaling);
+        geometric_mean_iteration_kernel<<<col_blocks, THREADS_PER_BLOCK>>>(state->constraint_matrix_t->row_ptr,
+                                                                           state->constraint_matrix_t->col_ind,
+                                                                           state->constraint_matrix_t->val,
+                                                                           num_variables,
+                                                                           col_log2,
+                                                                           inverse_constraint_rescaling,
+                                                                           inverse_variable_rescaling);
+    }
+
+    geometric_mean_finalize_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        inverse_constraint_rescaling, constraint_rescaling, rescale_info->con_rescale, num_constraints);
+    geometric_mean_finalize_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        inverse_variable_rescaling, variable_rescaling, rescale_info->var_rescale, num_variables);
+
+    scale_problem(
+        state, constraint_rescaling, variable_rescaling, inverse_constraint_rescaling, inverse_variable_rescaling);
 }
 
 static void pock_chambolle_rescaling(pdhg_solver_state_t *state,
@@ -260,6 +365,20 @@ rescale_info_t *rescale_problem(const pdhg_parameters_t *params, pdhg_solver_sta
     CUDA_CHECK(cudaMalloc(&inverse_constraint_rescaling, num_constraints * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&inverse_variable_rescaling, num_variables * sizeof(double)));
 
+    if (params->geometric_mean_iterations > 0)
+    {
+        if (params->verbose)
+        {
+            printf("  Geometric-mean scaling (%d iterations)\n", params->geometric_mean_iterations);
+        }
+        geometric_mean_rescaling(state,
+                                 params->geometric_mean_iterations,
+                                 rescale_info,
+                                 constraint_rescaling,
+                                 variable_rescaling,
+                                 inverse_constraint_rescaling,
+                                 inverse_variable_rescaling);
+    }
     if (params->l_inf_ruiz_iterations > 0)
     {
         if (params->verbose)
@@ -495,4 +614,64 @@ __global__ void fill_ones_kernel(double *__restrict__ x, int num_variables)
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < num_variables)
         x[i] = 1.0;
+}
+
+__global__ void max_csr_row_length_kernel(const int *__restrict__ row_ptr, int num_rows, int *__restrict__ result)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < num_rows)
+        atomicMax(result, row_ptr[i + 1] - row_ptr[i]);
+}
+
+__global__ void geometric_mean_iteration_kernel(const int *__restrict__ row_ptr,
+                                                const int *__restrict__ col_ind,
+                                                const double *__restrict__ matrix_vals,
+                                                int num_rows,
+                                                int log2_width,
+                                                const double *__restrict__ other_multiplier,
+                                                double *__restrict__ multiplier)
+{
+    const int width = 1 << log2_width;
+    const int groups_per_block = blockDim.x >> log2_width;
+    const int row = blockIdx.x * groups_per_block + (threadIdx.x >> log2_width);
+    const int lane = threadIdx.x & (width - 1);
+
+    double lo = INFINITY, hi = 0.0;
+    if (row < num_rows)
+    {
+        const int start = row_ptr[row], end = row_ptr[row + 1];
+        for (int k = start + lane; k < end; k += width)
+        {
+            const double scaled = fabs(matrix_vals[k]) * other_multiplier[col_ind[k]];
+            if (!(scaled > 0.0 && isfinite(scaled)))
+                continue;
+            lo = fmin(lo, scaled);
+            hi = fmax(hi, scaled);
+        }
+    }
+
+    for (int offset = width >> 1; offset > 0; offset >>= 1)
+    {
+        lo = fmin(lo, __shfl_down_sync(0xffffffffu, lo, offset, width));
+        hi = fmax(hi, __shfl_down_sync(0xffffffffu, hi, offset, width));
+    }
+
+    if (lane != 0 || row >= num_rows || hi <= 0.0)
+        return;
+
+    const double updated = 1.0 / (sqrt(lo) * sqrt(hi));
+    multiplier[row] = fmin(fmax(updated, 1.0 / GEOMETRIC_MEAN_MULTIPLIER_MAX), GEOMETRIC_MEAN_MULTIPLIER_MAX);
+}
+
+__global__ void geometric_mean_finalize_kernel(const double *__restrict__ multiplier,
+                                               double *__restrict__ scaling_factors,
+                                               double *__restrict__ cumulative_rescaling,
+                                               int n)
+{
+    for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n; t += blockDim.x * gridDim.x)
+    {
+        const double divisor = 1.0 / multiplier[t];
+        cumulative_rescaling[t] *= divisor;
+        scaling_factors[t] = divisor;
+    }
 }

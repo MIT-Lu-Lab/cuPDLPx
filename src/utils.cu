@@ -301,6 +301,7 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
 
 void set_default_parameters(pdhg_parameters_t *params)
 {
+    params->geometric_mean_iterations = 12;
     params->l_inf_ruiz_iterations = 10;
     params->has_pock_chambolle_alpha = true;
     params->pock_chambolle_alpha = 1.0;
@@ -610,6 +611,7 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
         printf("  optimality_norm    : %s\n", params->optimality_norm == NORM_TYPE_L_INF ? "L_inf" : "L2");
     }
 
+    PRINT_DIFF_INT("geo_mean_iter", params->geometric_mean_iterations, default_params.geometric_mean_iterations);
     PRINT_DIFF_INT("l_inf_ruiz_iter", params->l_inf_ruiz_iterations, default_params.l_inf_ruiz_iterations);
     PRINT_DIFF_DBL("pock_chambolle_alpha", params->pock_chambolle_alpha, default_params.pock_chambolle_alpha);
     PRINT_DIFF_BOOL(

@@ -43,6 +43,7 @@ _INT_PARAMS = frozenset(
     {
         "termination_evaluation_frequency",
         "iteration_limit",
+        "geometric_mean_iterations",
         "l_inf_ruiz_iterations",
         "sv_max_iter",
     }

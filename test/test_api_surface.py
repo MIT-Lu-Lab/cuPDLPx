@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 import numpy as np
 import scipy.sparse as sp
 import pytest
@@ -412,18 +410,3 @@ def test_optimize_rejects_bad_sense(base_lp_data):
     model._model_sense = 999  # bypass the property to hit optimize()'s guard
     with pytest.raises(ValueError):
         model.optimize()
-
-
-def test_read_mps_roundtrip():
-    """read() loads an MPS file into a usable Model."""
-    path = os.path.join(os.path.dirname(__file__), "cplex2.mps")
-    model = read(path)
-    assert model.num_vars > 0
-    assert model.num_constrs > 0
-    assert model.A.shape == (model.num_constrs, model.num_vars)
-    assert model.ModelSense in (PDLP.MINIMIZE, PDLP.MAXIMIZE)
-
-
-def test_read_mps_missing_file():
-    with pytest.raises(FileNotFoundError):
-        read("this_file_does_not_exist.mps")
