@@ -51,6 +51,32 @@ MPS_MAX = MPS_MIN.replace(
     "OBJSENSE\n    MAXIMIZE\nROWS\n",
 )
 
+# MPS_MIN plus a RANGES entry, explicit bounds and an objective constant,
+# with the optional set-name field omitted in every RHS / RANGES / BOUNDS
+# line (as in Netlib / CUTEst files such as BLEND, SIERRA, GFRD-PNC, DFL001).
+MPS_NAMELESS = """NAME          TESTLP
+ROWS
+ N  COST
+ E  R1
+ L  R2
+ L  R3
+COLUMNS
+    X1        COST      1.0   R1        1.0
+    X1        R3        3.0
+    X2        COST      1.0   R1        2.0
+    X2        R2        1.0   R3        2.0
+RHS
+              R1        5.0   R2        2.0
+              R3        8.0   COST     -1.5
+RANGES
+              R3        6.0
+BOUNDS
+ UP           X1        4.0
+ LO           X2        0.5
+ MI           X1
+ENDATA
+"""
+
 
 @pytest.fixture
 def mps_min_file(tmp_path):
@@ -128,6 +154,26 @@ def test_read_objsense_maximize(mps_max_file):
     model = cupdlpx.read(str(mps_max_file))
     _check_min_model_data(model)
     assert model.ModelSense == PDLP.MAXIMIZE
+
+
+def test_read_sections_without_set_name(tmp_path):
+    """
+    Entries without a set name must still reach the right rows/columns
+    (the reader used to drop the whole RHS section in this case).
+    """
+    path = tmp_path / "nameless.mps"
+    path.write_text(MPS_NAMELESS)
+    model = cupdlpx.read(str(path))
+    assert model.num_vars == 2
+    assert model.num_constrs == 3
+    assert np.allclose(model.c, [1.0, 1.0])
+    # RHS on the objective row is the negated objective constant
+    assert np.isclose(model.c0, 1.5)
+    # RHS and RANGES: R3 <= 8 with range 6 becomes 2 <= R3 <= 8
+    assert np.allclose(model.constr_lb, [5.0, -np.inf, 2.0])
+    assert np.allclose(model.constr_ub, [5.0, 2.0, 8.0])
+    assert np.allclose(model.lb, [-np.inf, 0.5])
+    assert np.allclose(model.ub, [4.0, np.inf])
 
 
 def test_read_missing_file_raises(tmp_path):

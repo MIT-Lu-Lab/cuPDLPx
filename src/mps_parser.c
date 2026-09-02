@@ -796,10 +796,26 @@ static int parse_columns_section(MpsParserState *state, char **tokens, int n_tok
     return 0;
 }
 
+// The set-name field of RHS, RANGES and BOUNDS lines is optional (Netlib and
+// CUTEst/SIF files often omit it). If the first data field already names a
+// known row (or column, for BOUNDS), there is no set name; otherwise the
+// first field is the set name and is skipped.
+static bool is_known_row(const MpsParserState *state, const char *name)
+{
+    if (state->objective_row_name && strcmp(name, state->objective_row_name) == 0)
+        return true;
+    return namemap_get(&state->row_map, name) != -1;
+}
+
+static int row_data_start(const MpsParserState *state, char **tokens, int n_tokens)
+{
+    return (n_tokens > 0 && is_known_row(state, tokens[0])) ? 0 : 1;
+}
+
 static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
 {
 
-    for (int i = 1; i + 1 < n_tokens; i += 2)
+    for (int i = row_data_start(state, tokens, n_tokens); i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double value = atof(tokens[i + 1]);
@@ -832,7 +848,7 @@ static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
 static int parse_ranges_section(MpsParserState *state, char **tokens, int n_tokens)
 {
 
-    for (int i = 1; i + 1 < n_tokens; i += 2)
+    for (int i = row_data_start(state, tokens, n_tokens); i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double range_val = atof(tokens[i + 1]);
@@ -870,13 +886,17 @@ static int parse_ranges_section(MpsParserState *state, char **tokens, int n_toke
 
 static int parse_bounds_section(MpsParserState *state, char **tokens, int n_tokens)
 {
-    if (n_tokens < 3)
+    if (n_tokens < 2)
         return 0;
 
     const char *bound_type = tokens[0];
 
-    const char *col_name = tokens[2];
-    double value = (n_tokens > 3) ? atof(tokens[3]) : 0.0;
+    // "type [set_name] column [value]"
+    int col_pos = (namemap_get(&state->col_map, tokens[1]) != -1) ? 1 : 2;
+    if (col_pos >= n_tokens)
+        return 0;
+    const char *col_name = tokens[col_pos];
+    double value = (col_pos + 1 < n_tokens) ? atof(tokens[col_pos + 1]) : 0.0;
 
     int col_idx = namemap_get(&state->col_map, col_name);
     if (col_idx == -1)
