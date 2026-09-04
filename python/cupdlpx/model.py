@@ -53,7 +53,7 @@ _FLOAT_PARAMS = frozenset(
     {
         "eps_optimal_relative",
         "eps_feasible_relative",
-        "eps_infeasible",
+        "eps_infeasible_relative",
         "time_sec_limit",
         "pock_chambolle_alpha",
         "artificial_restart_threshold",
@@ -71,7 +71,7 @@ _POSITIVE_FLOAT_PARAMS = frozenset(
     {
         "eps_optimal_relative",
         "eps_feasible_relative",
-        "eps_infeasible",
+        "eps_infeasible_relative",
         "eps_feas_polish_relative",
         "sv_tol",
         "infinite_bound",
