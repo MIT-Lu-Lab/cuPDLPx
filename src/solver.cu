@@ -203,6 +203,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         compute_fixed_point_error(state);
 
         compute_residual(state, params->optimality_norm);
+        compute_infeasibility_information(state);
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 

@@ -41,6 +41,7 @@ _PARAM_ALIAS = {
     # tolerances
     "OptimalityTol": "eps_optimal_relative",
     "FeasibilityTol": "eps_feasible_relative",
+    "InfeasibleTol": "eps_infeasible_relative",
     # scaling / step size
     "GeoMeanIters": "geometric_mean_iterations",
     "RuizIters": "l_inf_ruiz_iterations",
