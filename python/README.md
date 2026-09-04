@@ -163,6 +163,7 @@ Below is a list of commonly used parameters, their internal keys, and descriptio
 | `OptimalityNorm` | `optimality_norm` | string | `"l2"` | Norm for optimality criteria. Use `"l2"` for L2 norm or `"linf"` for infinity norm. |
 | `OptimalityTol` | `eps_optimal_relative` | float | `1e-4` | Relative tolerance for optimality gap. Solver stops if the relative primal-dual gap ≤ this value. |
 | `FeasibilityTol` | `eps_feasible_relative` | float | `1e-4` | Relative feasibility tolerance for primal/dual residuals. |
+| `InfeasibleTol` | `eps_infeasible` | float | `1e-14` | Relative tolerance on the ray certificate for declaring primal/dual infeasibility. |
 | `GeoMeanIters` | `geometric_mean_iterations` | int | `12` | Number of iterations of geometric-mean scaling. Improves numerical conditioning. |
 | `RuizIters` | `l_inf_ruiz_iterations` | int | `10` | Number of iterations of L∞ Ruiz scaling. Improves numerical conditioning. |
 | `UsePCAlpha` | `has_pock_chambolle_alpha` | bool | `True` | Whether to use the Pock–Chambolle α step size adjustment. |

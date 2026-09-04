@@ -636,6 +636,9 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
     PRINT_DIFF_DBL("eps_feas_polish_relative",
                    params->termination_criteria.eps_feas_polish_relative,
                    default_params.termination_criteria.eps_feas_polish_relative);
+    PRINT_DIFF_DBL("eps_infeasible",
+                   params->termination_criteria.eps_infeasible,
+                   default_params.termination_criteria.eps_infeasible);
     PRINT_DIFF_BOOL("presolve", params->presolve, default_params.presolve);
     PRINT_DIFF_DBL("matrix_zero_tol", params->matrix_zero_tol, default_params.matrix_zero_tol);
     PRINT_DIFF_DBL("infinite_bound", params->infinite_bound, default_params.infinite_bound);

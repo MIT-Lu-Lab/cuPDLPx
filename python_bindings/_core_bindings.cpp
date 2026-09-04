@@ -273,6 +273,7 @@ static py::dict get_default_params_py()
     // tolerances
     d["eps_optimal_relative"] = p.termination_criteria.eps_optimal_relative;
     d["eps_feasible_relative"] = p.termination_criteria.eps_feasible_relative;
+    d["eps_infeasible"] = p.termination_criteria.eps_infeasible;
 
     // limits
     d["time_sec_limit"] = p.termination_criteria.time_sec_limit;
@@ -384,6 +385,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     // tolerances
     getf("eps_optimal_relative", p->termination_criteria.eps_optimal_relative);
     getf("eps_feasible_relative", p->termination_criteria.eps_feasible_relative);
+    getf("eps_infeasible", p->termination_criteria.eps_infeasible);
 
     // limits
     getf("time_sec_limit", p->termination_criteria.time_sec_limit);
@@ -435,6 +437,8 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
         throw std::invalid_argument("eps_optimal_relative must be positive.");
     if (p->termination_criteria.eps_feasible_relative <= 0.0)
         throw std::invalid_argument("eps_feasible_relative must be positive.");
+    if (p->termination_criteria.eps_infeasible <= 0.0)
+        throw std::invalid_argument("eps_infeasible must be positive.");
     if (p->termination_criteria.eps_feas_polish_relative <= 0.0)
         throw std::invalid_argument("eps_feas_polish_relative must be positive.");
     if (p->sv_tol <= 0.0)
