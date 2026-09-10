@@ -21,7 +21,7 @@ from typing import Any, Optional, Union
 import numpy as np
 import scipy.sparse as sp
 
-from ._core import solve_once, get_default_params, read_mps
+from ._core import solve_once, get_default_params, validate_params, read_mps
 from . import PDLP
 
 # array-like type
@@ -33,10 +33,12 @@ _UNSET = object()
 _BOOL_PARAMS = frozenset(
     {
         "verbose",
+        "debug",
         "has_pock_chambolle_alpha",
         "bound_objective_rescaling",
         "feasibility_polishing",
         "presolve",
+        "active_set_boost",
     }
 )
 _INT_PARAMS = frozenset(
@@ -46,9 +48,10 @@ _INT_PARAMS = frozenset(
         "geometric_mean_iterations",
         "l_inf_ruiz_iterations",
         "sv_max_iter",
+        "asb_window_iter",
+        "asb_max_reverts",
     }
 )
-_POSITIVE_INT_PARAMS = frozenset({"termination_evaluation_frequency", "sv_max_iter"})
 _FLOAT_PARAMS = frozenset(
     {
         "eps_optimal_relative",
@@ -65,31 +68,24 @@ _FLOAT_PARAMS = frozenset(
         "sv_tol",
         "matrix_zero_tol",
         "infinite_bound",
+        "asb_activation_tol",
+        "asb_safety_factor",
+        "asb_min_raise_ratio",
+        "asb_reestimate_change_ratio",
+        "asb_constraint_tol",
+        "asb_variable_tol",
+        "asb_divergence_ceiling_ratio",
+        "asb_divergence_margin",
     }
 )
-_POSITIVE_FLOAT_PARAMS = frozenset(
-    {
-        "eps_optimal_relative",
-        "eps_feasible_relative",
-        "eps_infeasible_relative",
-        "eps_feas_polish_relative",
-        "sv_tol",
-        "infinite_bound",
-    }
-)
-_NONNEGATIVE_FLOAT_PARAMS = frozenset({"time_sec_limit", "matrix_zero_tol"})
 _STRING_PARAMS = frozenset({"optimality_norm"})
-
 # int params are stored as C int32 on the backend
 _INT32_MAX = np.iinfo(np.int32).max
 
-# every backend param must fall in one typed set, else it goes unvalidated
+# every backend param must fall in one typed set, else it goes uncoerced; value
+# ranges are not mirrored here: setParam hands the full dict to validate_params,
+# the same C check optimize() runs, so range rules live in one place
 _CLASSIFIED_PARAMS = _BOOL_PARAMS | _INT_PARAMS | _FLOAT_PARAMS | _STRING_PARAMS
-
-# refinement sets must be subsets of their base type sets
-assert _POSITIVE_INT_PARAMS <= _INT_PARAMS
-assert _POSITIVE_FLOAT_PARAMS <= _FLOAT_PARAMS
-assert _NONNEGATIVE_FLOAT_PARAMS <= _FLOAT_PARAMS
 
 def _as_dense_f64_c(a: ArrayLike) -> np.ndarray:
     """
@@ -522,7 +518,10 @@ class Model:
             raise KeyError(f"Unknown parameter '{name}'. Valid names: {valid}")
         return key
 
-    def _validate_param_value(self, key: str, value: Any) -> Any:
+    def _convert_param_value(self, key: str, value: Any) -> Any:
+        # type conversion only: turn what the user passed (numpy scalars, 0/1, integer-valued
+        # floats, mixed-case norm names) into the Python type the backend expects; value
+        # ranges are checked by validate_params, the same C rules optimize() applies
         if key in _BOOL_PARAMS:
             # accept a real bool, numpy bool, or an integer 0/1; store a Python bool
             if isinstance(value, (bool, np.bool_)):
@@ -543,12 +542,8 @@ class Model:
                 value = int(value)
             else:
                 raise TypeError(f"Parameter '{key}' must be an int.")
-            if key in _POSITIVE_INT_PARAMS and value <= 0:
-                raise ValueError(f"Parameter '{key}' must be positive.")
-            if key not in _POSITIVE_INT_PARAMS and value < 0:
-                raise ValueError(f"Parameter '{key}' must be nonnegative.")
-            if value > _INT32_MAX:
-                raise ValueError(f"Parameter '{key}' must not exceed {_INT32_MAX} (int32 range).")
+            if not -_INT32_MAX - 1 <= value <= _INT32_MAX:
+                raise ValueError(f"Parameter '{key}' must fit in an int32.")
             return value
 
         if key in _FLOAT_PARAMS:
@@ -557,14 +552,7 @@ class Model:
                 raise TypeError(f"Parameter '{key}' must be a number.")
             if not isinstance(value, (int, float, np.integer, np.floating)):
                 raise TypeError(f"Parameter '{key}' must be a number.")
-            value = float(value)
-            if not np.isfinite(value):
-                raise ValueError(f"Parameter '{key}' must be finite.")
-            if key in _POSITIVE_FLOAT_PARAMS and value <= 0.0:
-                raise ValueError(f"Parameter '{key}' must be positive.")
-            if key in _NONNEGATIVE_FLOAT_PARAMS and value < 0.0:
-                raise ValueError(f"Parameter '{key}' must be nonnegative.")
-            return value
+            return float(value)
 
         if key in _STRING_PARAMS:
             if not isinstance(value, str):
@@ -580,9 +568,12 @@ class Model:
         """
         Set the value of a solver parameter by name.
         """
-        # resolve name and store
+        # resolve name, convert the type, validate the resulting parameter set, then store
         key = self._resolve_param_key(name)
-        self._params[key] = self._validate_param_value(key, value)
+        candidate = dict(self._params)
+        candidate[key] = self._convert_param_value(key, value)
+        validate_params(candidate)
+        self._params = candidate
 
     def getParam(self, name: str) -> Any:
         """
@@ -596,11 +587,12 @@ class Model:
         """
         Set multiple solver parameters by name. 
         """
-        updates = {}
+        candidate = dict(self._params)
         for k, v in kwargs.items():
             key = self._resolve_param_key(k)
-            updates[key] = self._validate_param_value(key, v)
-        self._params.update(updates)
+            candidate[key] = self._convert_param_value(key, v)
+        validate_params(candidate)
+        self._params = candidate
 
     def resetParams(self) -> None:
         """

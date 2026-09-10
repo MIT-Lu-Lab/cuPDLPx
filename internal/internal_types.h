@@ -37,6 +37,37 @@ typedef struct
     int *transpose_map;
 } cu_sparse_matrix_csr_t;
 
+/* Power-iteration estimator of the maximum singular value. The context owns the
+   device workspace and SpMV plans for one (A, AT) pair and is defined in utils.cu;
+   after a non-degenerate run it warm-starts the next run from its final eigenvector. */
+typedef struct sv_estimator_ctx sv_estimator_ctx_t;
+
+/* Per-run options; zero-initialize and set what you need. */
+typedef struct
+{
+    int max_iterations;
+    double tolerance;
+    const bool *d_row_mask;                /* NULL = unmasked */
+    const bool *d_col_mask;                /* NULL = unmasked */
+    double abort_singular_value_threshold; /* > 0: stop once the running Rayleigh lower
+                                              bound reaches it; 0 = never */
+} sv_estimator_opts_t;
+
+typedef enum
+{
+    SV_ESTIMATOR_CONVERGED = 0,  /* residual test passed */
+    SV_ESTIMATOR_ABORTED = 1,    /* abort threshold crossed; the estimate is a lower bound */
+    SV_ESTIMATOR_MAX_ITER = 2,   /* max_iterations exhausted without convergence */
+    SV_ESTIMATOR_DEGENERATE = 3, /* zero or non-finite iterate; max_singular_value is 0.0 */
+} sv_estimator_status_t;
+
+typedef struct
+{
+    sv_estimator_status_t status;
+    double max_singular_value;
+    int iterations; /* power iterations actually run */
+} sv_estimator_result_t;
+
 typedef struct
 {
     int num_variables;
@@ -72,6 +103,7 @@ typedef struct
     double *reflected_dual_solution;
     double *primal_product;
     double step_size;
+    double base_step_size;
     double *d_primal_step_size;
     double *d_dual_step_size;
     double primal_weight;
@@ -88,6 +120,7 @@ typedef struct
     double objective_vector_rescaling;
     double *primal_slack;
     double *dual_slack;
+    double *infeasibility_dual_scratch; /* n-vector scratch for the ray certificate; dual_slack must survive */
     double rescaling_time_sec;
     clock_t start_time;
     double cumulative_time_sec;
@@ -114,7 +147,40 @@ typedef struct
     double initial_fixed_point_error;
     double last_trial_fixed_point_error;
     int inner_count;
+    int restart_count;               /* restarts performed, ASB reverts included */
+    const char *last_restart_reason; /* criterion that fired for the most recent adaptive restart */
+    int logged_restart_count;        /* restart_count at the last printed iteration row */
     int *d_inner_count;
+
+    /* active-set step controller */
+    sv_estimator_ctx_t *asb_sv_ctx; /* cached power-iteration workspace + SpMV plans */
+    int asb_phase;
+    double asb_sv;
+    double asb_step_ceiling; /* post-divergence cap on the target step (INFINITY = none) */
+    double asb_anchor_primal_weight;
+    /* primal-weight PID state captured with the anchor; a revert restores it too */
+    double asb_anchor_pw_error_sum;
+    double asb_anchor_pw_last_error;
+    double asb_anchor_best_pw;
+    double asb_anchor_best_pd_residual_gap;
+    int asb_revert_count;
+    int asb_raise_count;
+    int asb_pi_early_exit_count;
+    int asb_pi_iterations;
+    int asb_sv_failed_count;
+    bool asb_no_raise_certified;     /* a NO_RAISE abort covers the unchanged union */
+    long asb_changes_since_estimate; /* mask entries added or removed since the last sv estimate */
+    long asb_free_variables;         /* variables in the mask: not confidently clamped within the window */
+    long asb_binding_constraints;    /* constraints in the mask: binding within the window */
+    int *d_asb_var_last_free;
+    int *d_asb_row_last_binding;
+    bool *d_asb_col_mask;
+    bool *d_asb_row_mask;
+    double *d_asb_primal_anchor;
+    double *d_asb_dual_anchor;
+    double *d_asb_dual_slack_anchor;
+    double *d_asb_dual_projection_input;
+    int *d_asb_count;
 
     cusparseHandle_t sparse_handle;
     cublasHandle_t blas_handle;

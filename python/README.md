@@ -179,6 +179,18 @@ Below is a list of commonly used parameters, their internal keys, and descriptio
 | `Presolve`| `presolve` | bool | `True` | Whether to use presolve. |
 | `FeasibilityPolishing` | `feasibility_polishing` | bool | `False` | Run feasibility polishing process.|
 | `FeasibilityPolishingTol` | `eps_feas_polish_relative` | float | `1e-6` | Relative tolerance for primal/dual residual.  |
+| `Debug` | `debug` | bool | `False` | Developer diagnostics (implies `OutputFlag`). |
+| `ActiveSetBoost` | `active_set_boost` | bool | `True` | Enable the active-set stepsize boost. |
+| `ASBActivationTol` | `asb_activation_tol` | float | `1e-4` | Residual threshold at which the boost activates. |
+| `ASBWindowIter` | `asb_window_iter` | int | `10000` | Number of recent iterations used to identify the active set. |
+| `ASBSafetyFactor` | `asb_safety_factor` | float | `0.9` | Boosted step = factor / estimated singular value. |
+| `ASBMaxReverts` | `asb_max_reverts` | int | `2` | Divergences tolerated before the boost turns off; a diverged step is always reverted. |
+| `ASBMinRaiseRatio` | `asb_min_raise_ratio` | float | `1.1` | Minimum ratio for a step increase. |
+| `ASBReestimateChangeRatio` | `asb_reestimate_change_ratio` | float | `0.01` | Fraction of the active set that must change before re-estimating. |
+| `ASBConstraintTol` | `asb_constraint_tol` | float | `1e-8` | Tolerance for treating a constraint as binding. |
+| `ASBVariableTol` | `asb_variable_tol` | float | `1e-8` | Tolerance for treating a variable as at its bound. |
+| `ASBDivergenceCeilingRatio` | `asb_divergence_ceiling_ratio` | float | `0.7` | Step ceiling after a revert, relative to the diverged step. |
+| `ASBDivergenceMargin` | `asb_divergence_margin` | float | `0.05` | Allowed fixed-point error increase before a revert. |
 
 They can be set in multiple ways:
 

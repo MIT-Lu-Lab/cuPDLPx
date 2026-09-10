@@ -42,6 +42,10 @@ extern "C"
     // parameter
     void set_default_parameters(pdhg_parameters_t *params);
 
+    /* Return 0 if params are valid. Otherwise, return nonzero and write the first
+       error to error_message when provided. */
+    int cupdlpx_validate_parameters(const pdhg_parameters_t *params, char *error_message, size_t error_message_size);
+
     void cupdlpx_result_free(cupdlpx_result_t *results);
 
     void lp_problem_free(lp_problem_t *prob);

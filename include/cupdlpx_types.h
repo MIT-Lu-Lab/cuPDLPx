@@ -99,6 +99,7 @@ extern "C"
         double pock_chambolle_alpha;
         bool bound_objective_rescaling;
         bool verbose;
+        bool debug;
         int termination_evaluation_frequency;
         int sv_max_iter;
         double sv_tol;
@@ -111,6 +112,17 @@ extern "C"
         double matrix_zero_tol;
         double infinite_bound;
         int geometric_mean_iterations;
+        bool active_set_boost;
+        double asb_activation_tol;
+        int asb_window_iter;
+        double asb_safety_factor;
+        int asb_max_reverts;
+        double asb_min_raise_ratio;
+        double asb_reestimate_change_ratio;
+        double asb_constraint_tol;
+        double asb_variable_tol;
+        double asb_divergence_ceiling_ratio;
+        double asb_divergence_margin;
     } pdhg_parameters_t;
 
     typedef struct
@@ -149,6 +161,11 @@ extern "C"
         termination_reason_t termination_reason;
         double feasibility_polishing_time;
         int feasibility_iteration;
+
+        /* active-set step controller statistics (zero when the controller is disabled) */
+        int asb_raise_count;
+        int asb_revert_count;
+        int asb_pi_iterations;
     } cupdlpx_result_t;
 
     // matrix formats

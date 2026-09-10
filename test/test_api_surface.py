@@ -259,6 +259,12 @@ def test_direct_core_param_value_validation(base_lp_data):
         solve_once(A, c, None, lb, ub, l, u, params={"time_sec_limit": float("nan")})
     with pytest.raises(ValueError):
         solve_once(A, c, None, lb, ub, l, u, params={"optimality_norm": "l1"})
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        solve_once(A, c, None, lb, ub, l, u, params={"eps_optimal_relatve": 1e-6})
+    with pytest.raises(ValueError, match="must be a number"):
+        solve_once(A, c, None, lb, ub, l, u, params={"time_sec_limit": "60"})
+    with pytest.raises(ValueError, match="int32"):
+        solve_once(A, c, None, lb, ub, l, u, params={"iteration_limit": 2**40})
 
 
 def test_direct_core_model_data_validation(base_lp_data):

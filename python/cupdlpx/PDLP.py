@@ -36,6 +36,7 @@ _PARAM_ALIAS = {
     "IterationLimit": "iteration_limit",
     "OutputFlag": "verbose",
     "LogToConsole": "verbose",
+    "Debug": "debug",
     # termination evaluation cadence
     "TermCheckFreq": "termination_evaluation_frequency",
     # tolerances
@@ -67,4 +68,16 @@ _PARAM_ALIAS = {
     "Presolve": "presolve",
     "MatrixZeroTol": "matrix_zero_tol",
     "InfiniteBound": "infinite_bound",
+    # active-set step boost
+    "ActiveSetBoost": "active_set_boost",
+    "ASBActivationTol": "asb_activation_tol",
+    "ASBWindowIter": "asb_window_iter",
+    "ASBSafetyFactor": "asb_safety_factor",
+    "ASBMaxReverts": "asb_max_reverts",
+    "ASBMinRaiseRatio": "asb_min_raise_ratio",
+    "ASBReestimateChangeRatio": "asb_reestimate_change_ratio",
+    "ASBConstraintTol": "asb_constraint_tol",
+    "ASBVariableTol": "asb_variable_tol",
+    "ASBDivergenceCeilingRatio": "asb_divergence_ceiling_ratio",
+    "ASBDivergenceMargin": "asb_divergence_margin",
 }

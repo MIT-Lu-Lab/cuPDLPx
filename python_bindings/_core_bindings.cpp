@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -24,6 +24,7 @@ limitations under the License.
 #include <pybind11/stl.h>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "cupdlpx.h"
@@ -239,11 +240,9 @@ static void validate_result_dimensions(const cupdlpx_result_t *res, int expected
 {
     if (res->num_variables != expected_n || res->num_constraints != expected_m)
     {
-        throw std::runtime_error("solve_lp_problem returned result dimensions " +
-                                 std::to_string(res->num_variables) + "x" +
-                                 std::to_string(res->num_constraints) +
-                                 ", expected " + std::to_string(expected_n) +
-                                 "x" + std::to_string(expected_m) + ".");
+        throw std::runtime_error("solve_lp_problem returned result dimensions " + std::to_string(res->num_variables) +
+                                 "x" + std::to_string(res->num_constraints) + ", expected " +
+                                 std::to_string(expected_n) + "x" + std::to_string(expected_m) + ".");
     }
     if (expected_n > 0 && !res->primal_solution)
     {
@@ -268,6 +267,7 @@ static py::dict get_default_params_py()
 
     // verbosity
     d["verbose"] = p.verbose;
+    d["debug"] = p.debug;
     d["termination_evaluation_frequency"] = p.termination_evaluation_frequency;
 
     // tolerances
@@ -311,6 +311,19 @@ static py::dict get_default_params_py()
     d["matrix_zero_tol"] = p.matrix_zero_tol;
     d["infinite_bound"] = p.infinite_bound;
 
+    // active-set step boost
+    d["active_set_boost"] = p.active_set_boost;
+    d["asb_activation_tol"] = p.asb_activation_tol;
+    d["asb_window_iter"] = p.asb_window_iter;
+    d["asb_safety_factor"] = p.asb_safety_factor;
+    d["asb_max_reverts"] = p.asb_max_reverts;
+    d["asb_min_raise_ratio"] = p.asb_min_raise_ratio;
+    d["asb_reestimate_change_ratio"] = p.asb_reestimate_change_ratio;
+    d["asb_constraint_tol"] = p.asb_constraint_tol;
+    d["asb_variable_tol"] = p.asb_variable_tol;
+    d["asb_divergence_ceiling_ratio"] = p.asb_divergence_ceiling_ratio;
+    d["asb_divergence_margin"] = p.asb_divergence_margin;
+
     return d;
 }
 
@@ -321,8 +334,12 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
         return;
     py::dict d = params_obj.cast<py::dict>();
 
+    // every key the readers below look at; anything else in the dict is a typo
+    std::unordered_set<std::string> known_keys;
+
     auto getf = [&](const char *k, double &tgt)
     {
+        known_keys.insert(k);
         if (d.contains(k))
         {
             py::object val = d[k];
@@ -330,7 +347,14 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
             {
                 throw std::invalid_argument(std::string(k) + " must be a number.");
             }
-            tgt = py::cast<double>(val);
+            try
+            {
+                tgt = py::cast<double>(val);
+            }
+            catch (const py::cast_error &)
+            {
+                throw std::invalid_argument(std::string(k) + " must be a number.");
+            }
             if (!std::isfinite(tgt))
             {
                 throw std::invalid_argument(std::string(k) + " must be finite.");
@@ -339,6 +363,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     };
     auto geti = [&](const char *k, int &tgt)
     {
+        known_keys.insert(k);
         if (d.contains(k))
         {
             py::object val = d[k];
@@ -346,11 +371,19 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
             {
                 throw std::invalid_argument(std::string(k) + " must be an int.");
             }
-            tgt = py::cast<int>(val);
+            try
+            {
+                tgt = py::cast<int>(val);
+            }
+            catch (const py::cast_error &)
+            {
+                throw std::invalid_argument(std::string(k) + " must fit in an int32.");
+            }
         }
     };
     auto getb = [&](const char *k, bool &tgt)
     {
+        known_keys.insert(k);
         if (d.contains(k))
         {
             py::object val = d[k];
@@ -363,6 +396,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     };
     auto get_norm = [&](const char *k, norm_type_t &tgt)
     {
+        known_keys.insert(k);
         if (d.contains(k))
         {
             py::object val = d[k];
@@ -380,6 +414,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
 
     // verbosity
     getb("verbose", p->verbose);
+    getb("debug", p->debug);
     geti("termination_evaluation_frequency", p->termination_evaluation_frequency);
 
     // tolerances
@@ -423,32 +458,33 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     getf("matrix_zero_tol", p->matrix_zero_tol);
     getf("infinite_bound", p->infinite_bound);
 
-    if (p->termination_evaluation_frequency <= 0)
-        throw std::invalid_argument("termination_evaluation_frequency must be positive.");
-    if (p->termination_criteria.iteration_limit < 0)
-        throw std::invalid_argument("iteration_limit must be nonnegative.");
-    if (p->geometric_mean_iterations < 0)
-        throw std::invalid_argument("geometric_mean_iterations must be nonnegative.");
-    if (p->l_inf_ruiz_iterations < 0)
-        throw std::invalid_argument("l_inf_ruiz_iterations must be nonnegative.");
-    if (p->sv_max_iter <= 0)
-        throw std::invalid_argument("sv_max_iter must be positive.");
-    if (p->termination_criteria.eps_optimal_relative <= 0.0)
-        throw std::invalid_argument("eps_optimal_relative must be positive.");
-    if (p->termination_criteria.eps_feasible_relative <= 0.0)
-        throw std::invalid_argument("eps_feasible_relative must be positive.");
-    if (p->termination_criteria.eps_infeasible_relative <= 0.0)
-        throw std::invalid_argument("eps_infeasible_relative must be positive.");
-    if (p->termination_criteria.eps_feas_polish_relative <= 0.0)
-        throw std::invalid_argument("eps_feas_polish_relative must be positive.");
-    if (p->sv_tol <= 0.0)
-        throw std::invalid_argument("sv_tol must be positive.");
-    if (p->termination_criteria.time_sec_limit < 0.0)
-        throw std::invalid_argument("time_sec_limit must be nonnegative.");
-    if (p->infinite_bound <= 0.0)
-        throw std::invalid_argument("infinite_bound must be positive.");
-    if (p->matrix_zero_tol < 0.0)
-        throw std::invalid_argument("matrix_zero_tol must be nonnegative.");
+    // active-set step boost
+    getb("active_set_boost", p->active_set_boost);
+    getf("asb_activation_tol", p->asb_activation_tol);
+    geti("asb_window_iter", p->asb_window_iter);
+    getf("asb_safety_factor", p->asb_safety_factor);
+    geti("asb_max_reverts", p->asb_max_reverts);
+    getf("asb_min_raise_ratio", p->asb_min_raise_ratio);
+    getf("asb_reestimate_change_ratio", p->asb_reestimate_change_ratio);
+    getf("asb_constraint_tol", p->asb_constraint_tol);
+    getf("asb_variable_tol", p->asb_variable_tol);
+    getf("asb_divergence_ceiling_ratio", p->asb_divergence_ceiling_ratio);
+    getf("asb_divergence_margin", p->asb_divergence_margin);
+
+    for (auto item : d)
+    {
+        std::string key = py::str(item.first);
+        if (!known_keys.count(key))
+        {
+            throw std::invalid_argument("Unknown parameter '" + key + "'.");
+        }
+    }
+
+    char validation_error[256];
+    if (cupdlpx_validate_parameters(p, validation_error, sizeof(validation_error)) != 0)
+    {
+        throw std::invalid_argument(validation_error);
+    }
 }
 
 // throw if a 1D array's length differs from the expected value
@@ -461,8 +497,8 @@ static void expect_len(py::object obj, py::ssize_t expected, const char *name)
     }
     if (arr.size() != expected)
     {
-        throw std::invalid_argument(std::string(name) + " has wrong length: expected " +
-                                    std::to_string(expected) + ", got " + std::to_string((long long)arr.size()));
+        throw std::invalid_argument(std::string(name) + " has wrong length: expected " + std::to_string(expected) +
+                                    ", got " + std::to_string((long long)arr.size()));
     }
 }
 
@@ -512,8 +548,8 @@ static void validate_bounds(const double *lower, const double *upper, int size, 
 }
 
 // validate a compressed (CSR/CSC) index structure
-static void validate_compressed(const int32_t *indptr, const int32_t *indices, int major, int minor, int nnz,
-                                const char *fmt)
+static void
+validate_compressed(const int32_t *indptr, const int32_t *indices, int major, int minor, int nnz, const char *fmt)
 {
     if (indptr[0] != 0)
     {
@@ -809,6 +845,11 @@ static py::dict solve_once(py::object A,
     info["PrimalRayLinObj"] = res->primal_ray_linear_objective;
     info["DualRayObj"] = res->dual_ray_objective;
 
+    // active-set step boost statistics
+    info["ASBRaiseCount"] = res->asb_raise_count;
+    info["ASBRevertCount"] = res->asb_revert_count;
+    info["ASBPowerIterations"] = res->asb_pi_iterations;
+
     // res freed by res_guard on return
     return info;
 }
@@ -870,11 +911,25 @@ static py::dict read_mps_py(const std::string &filename)
 }
 
 // module
+// Validate a params dict the way solve_once will: defaults overlaid with the dict,
+// then cupdlpx_validate_parameters. Raises ValueError on the first violation.
+static void validate_params_py(py::object params_obj)
+{
+    pdhg_parameters_t p;
+    set_default_parameters(&p);
+    parse_params_from_python(params_obj, &p);
+}
+
 PYBIND11_MODULE(_cupdlpx_core, m)
 {
     m.doc() = "cupdlpx core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
 
     m.def("get_default_params", &get_default_params_py, "Return default PDHG parameters as a dict");
+
+    m.def("validate_params",
+          &validate_params_py,
+          py::arg("params"),
+          "Validate a params dict against the solver's parameter rules; raises ValueError");
 
     m.def("read_mps",
           &read_mps_py,
