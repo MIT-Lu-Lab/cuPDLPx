@@ -17,6 +17,7 @@ limitations under the License.
 #include "utils.h"
 #include <math.h>
 #include <random>
+#include <string.h>
 
 #ifndef CUPDLPX_VERSION
 #define CUPDLPX_VERSION "unknown"
@@ -63,35 +64,65 @@ void *safe_realloc(void *ptr, size_t new_size)
     return tmp;
 }
 
-double estimate_maximum_singular_value(cusparseHandle_t sparse_handle,
-                                       cublasHandle_t blas_handle,
-                                       const cu_sparse_matrix_csr_t *A,
-                                       const cu_sparse_matrix_csr_t *AT,
-                                       int max_iterations,
-                                       double tolerance)
+__global__ void elementwise_mask_kernel(double *__restrict__ v, const bool *__restrict__ mask, int n)
 {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
+        v[i] = mask[i] ? v[i] : 0.0;
+}
+
+__global__ void warm_start_fill_kernel(double *__restrict__ v, const bool *__restrict__ mask, double amplitude, int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    if (mask[i] && v[i] == 0.0)
+    {
+        /* Deterministic per-index noise (splitmix64 hash to [-0.5, 0.5)) preserves
+           reproducibility without RNG state or a host-to-device copy. */
+        unsigned long long z = (unsigned long long)i + 0x9E3779B97F4A7C15ULL;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+        z = z ^ (z >> 31);
+        double u = (double)(z >> 11) * (1.0 / 9007199254740992.0); /* [0, 1) */
+        v[i] = amplitude * (u - 0.5);
+    }
+}
+
+/* Masks are applied elementwise per run, so a cached context stays valid across mask
+   changes; it must be recreated only if the matrix itself changes. */
+struct sv_estimator_ctx
+{
+    cusparseHandle_t sparse_handle;
+    cublasHandle_t blas_handle;
+    int num_rows, num_cols;
+    double *eigenvector_d;
+    double *next_eigenvector_d;
+    double *dual_product_d;
+    cusparseSpMatDescr_t matA, matAT;
+    cusparseDnVecDescr_t vecEigen, vecNextEigen, vecDual;
+    void *descrAT, *descrA;
+    void *planAT, *planA;
+    void *dBufferAT, *dBufferA;
+    bool have_warm_start; /* eigenvector_d contains the final vector from the previous estimate */
+};
+
+sv_estimator_ctx_t *sv_estimator_create(cusparseHandle_t sparse_handle,
+                                        cublasHandle_t blas_handle,
+                                        const cu_sparse_matrix_csr_t *A,
+                                        const cu_sparse_matrix_csr_t *AT)
+{
+    sv_estimator_ctx_t *ctx = (sv_estimator_ctx_t *)safe_calloc(1, sizeof(sv_estimator_ctx_t));
+    ctx->sparse_handle = sparse_handle;
+    ctx->blas_handle = blas_handle;
     const int m = A->num_rows;
     const int n = A->num_cols;
-    double *eigenvector_d, *next_eigenvector_d, *dual_product_d;
-
-    CUDA_CHECK(cudaMalloc(&eigenvector_d, m * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&next_eigenvector_d, m * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&dual_product_d, n * sizeof(double)));
-
-    double *eigenvector_h = (double *)safe_malloc(m * sizeof(double));
-    for (int i = 0; i < m; ++i)
-    {
-        eigenvector_h[i] = dist(gen);
-    }
-
-    CUDA_CHECK(cudaMemcpy(eigenvector_d, eigenvector_h, m * sizeof(double), cudaMemcpyHostToDevice));
-    free(eigenvector_h);
-
-    double sigma_max_sq = 1.0;
-    const double one = 1.0;
-
-    cusparseSpMatDescr_t matA, matAT;
-    CUSPARSE_CHECK(cusparseCreateCsr(&matA,
+    ctx->num_rows = m;
+    ctx->num_cols = n;
+    CUDA_CHECK(cudaMalloc(&ctx->eigenvector_d, m * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&ctx->next_eigenvector_d, m * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&ctx->dual_product_d, n * sizeof(double)));
+    CUSPARSE_CHECK(cusparseCreateCsr(&ctx->matA,
                                      A->num_rows,
                                      A->num_cols,
                                      A->num_nonzeros,
@@ -102,7 +133,7 @@ double estimate_maximum_singular_value(cusparseHandle_t sparse_handle,
                                      CUSPARSE_INDEX_32I,
                                      CUSPARSE_INDEX_BASE_ZERO,
                                      CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateCsr(&matAT,
+    CUSPARSE_CHECK(cusparseCreateCsr(&ctx->matAT,
                                      AT->num_rows,
                                      AT->num_cols,
                                      AT->num_nonzeros,
@@ -113,68 +144,162 @@ double estimate_maximum_singular_value(cusparseHandle_t sparse_handle,
                                      CUSPARSE_INDEX_32I,
                                      CUSPARSE_INDEX_BASE_ZERO,
                                      CUDA_R_64F));
-
-    cusparseDnVecDescr_t vecEigen, vecNextEigen, vecDual;
-    CUSPARSE_CHECK(cusparseCreateDnVec(&vecEigen, m, eigenvector_d, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&vecNextEigen, m, next_eigenvector_d, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&vecDual, n, dual_product_d, CUDA_R_64F));
-
-    void *descrAT = NULL;
-    void *descrA = NULL;
-    void *planAT = NULL;
-    void *planA = NULL;
-
-    void *dBufferAT = NULL;
-    void *dBufferA = NULL;
+    CUSPARSE_CHECK(cusparseCreateDnVec(&ctx->vecEigen, m, ctx->eigenvector_d, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&ctx->vecNextEigen, m, ctx->next_eigenvector_d, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&ctx->vecDual, n, ctx->dual_product_d, CUDA_R_64F));
     size_t bufferSizeAT = 0, bufferSizeA = 0;
-    cupdlpx_spmv_buffer_size(sparse_handle, matAT, vecNextEigen, vecDual, &bufferSizeAT);
-    cupdlpx_spmv_buffer_size(sparse_handle, matA, vecDual, vecEigen, &bufferSizeA);
+    cupdlpx_spmv_buffer_size(sparse_handle, ctx->matAT, ctx->vecNextEigen, ctx->vecDual, &bufferSizeAT);
+    cupdlpx_spmv_buffer_size(sparse_handle, ctx->matA, ctx->vecDual, ctx->vecEigen, &bufferSizeA);
+    CUDA_CHECK(cudaMalloc(&ctx->dBufferAT, bufferSizeAT));
+    CUDA_CHECK(cudaMalloc(&ctx->dBufferA, bufferSizeA));
+    cupdlpx_spmv_prepare(
+        sparse_handle, ctx->matAT, ctx->vecNextEigen, ctx->vecDual, ctx->dBufferAT, &ctx->descrAT, &ctx->planAT);
+    cupdlpx_spmv_prepare(
+        sparse_handle, ctx->matA, ctx->vecDual, ctx->vecEigen, ctx->dBufferA, &ctx->descrA, &ctx->planA);
+    return ctx;
+}
 
-    CUDA_CHECK(cudaMalloc(&dBufferAT, bufferSizeAT));
-    CUDA_CHECK(cudaMalloc(&dBufferA, bufferSizeA));
+void sv_estimator_free(sv_estimator_ctx_t *ctx)
+{
+    if (!ctx)
+        return;
+    cupdlpx_spmv_release(ctx->descrAT, ctx->planAT);
+    cupdlpx_spmv_release(ctx->descrA, ctx->planA);
+    CUDA_CHECK(cudaFree(ctx->dBufferAT));
+    CUDA_CHECK(cudaFree(ctx->dBufferA));
+    CUSPARSE_CHECK(cusparseDestroySpMat(ctx->matA));
+    CUSPARSE_CHECK(cusparseDestroySpMat(ctx->matAT));
+    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->vecEigen));
+    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->vecNextEigen));
+    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->vecDual));
+    CUDA_CHECK(cudaFree(ctx->eigenvector_d));
+    CUDA_CHECK(cudaFree(ctx->next_eigenvector_d));
+    CUDA_CHECK(cudaFree(ctx->dual_product_d));
+    free(ctx);
+}
 
-    cupdlpx_spmv_prepare(sparse_handle, matAT, vecNextEigen, vecDual, dBufferAT, &descrAT, &planAT);
-    cupdlpx_spmv_prepare(sparse_handle, matA, vecDual, vecEigen, dBufferA, &descrA, &planA);
+sv_estimator_result_t sv_estimator_run(sv_estimator_ctx_t *ctx, const sv_estimator_opts_t *opts)
+{
+    cusparseHandle_t sparse_handle = ctx->sparse_handle;
+    cublasHandle_t blas_handle = ctx->blas_handle;
+    const int m = ctx->num_rows;
+    const int n = ctx->num_cols;
+    const bool *d_row_mask = opts->d_row_mask;
+    const bool *d_col_mask = opts->d_col_mask;
+    double *eigenvector_d = ctx->eigenvector_d;
+    double *next_eigenvector_d = ctx->next_eigenvector_d;
 
-    for (int i = 0; i < max_iterations; ++i)
+    sv_estimator_result_t result = {};
+    result.status = SV_ESTIMATOR_MAX_ITER;
+    double max_singular_value_squared = 1.0;
+    const double one = 1.0;
+
+    cudaStream_t handle_stream = 0;
+    CUSPARSE_CHECK(cusparseGetStream(sparse_handle, &handle_stream));
+    const int row_blocks = (m + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    const int col_blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+
+    bool random_start = !ctx->have_warm_start;
+    if (!random_start && d_row_mask)
     {
+        elementwise_mask_kernel<<<row_blocks, THREADS_PER_BLOCK, 0, handle_stream>>>(eigenvector_d, d_row_mask, m);
+        /* Rows added to the mask after the previous estimate have zero entries in the
+           warm-start vector and could be omitted, causing the masked singular value to be
+           underestimated. Initialize these entries with small deterministic perturbations.
+           A masked warm vector that vanished (mask disjoint from the previous eigenvector's
+           support) carries no direction at all: start over from a random vector. */
+        double warm_norm = 0.0;
+        CUBLAS_CHECK(cublasDnrm2_v2_64(blas_handle, m, eigenvector_d, 1, &warm_norm));
+        if (isfinite(warm_norm) && warm_norm > 0.0)
+        {
+            double amplitude = 1e-3 * warm_norm / sqrt((double)m);
+            warm_start_fill_kernel<<<row_blocks, THREADS_PER_BLOCK, 0, handle_stream>>>(
+                eigenvector_d, d_row_mask, amplitude, m);
+        }
+        else
+        {
+            random_start = true;
+        }
+    }
+    if (random_start)
+    {
+        double *eigenvector_h = (double *)safe_malloc(m * sizeof(double));
+        for (int i = 0; i < m; ++i)
+        {
+            eigenvector_h[i] = dist(gen);
+        }
+        CUDA_CHECK(cudaMemcpy(eigenvector_d, eigenvector_h, m * sizeof(double), cudaMemcpyHostToDevice));
+        free(eigenvector_h);
+        if (d_row_mask)
+        {
+            elementwise_mask_kernel<<<row_blocks, THREADS_PER_BLOCK, 0, handle_stream>>>(eigenvector_d, d_row_mask, m);
+        }
+    }
+
+    for (int i = 0; i < opts->max_iterations; ++i)
+    {
+        result.iterations = i + 1;
         CUDA_CHECK(cudaMemcpy(next_eigenvector_d, eigenvector_d, m * sizeof(double), cudaMemcpyDeviceToDevice));
         double eigenvector_norm;
         CUBLAS_CHECK(cublasDnrm2_v2_64(blas_handle, m, next_eigenvector_d, 1, &eigenvector_norm));
+        if (!isfinite(eigenvector_norm) || eigenvector_norm <= 0.0)
+        {
+            result.status = SV_ESTIMATOR_DEGENERATE;
+            break;
+        }
 
         double inv_eigenvector_norm = 1.0 / eigenvector_norm;
         CUBLAS_CHECK(cublasDscal(blas_handle, m, &inv_eigenvector_norm, next_eigenvector_d, 1));
 
-        cupdlpx_spmv_execute(sparse_handle, matAT, vecNextEigen, vecDual, dBufferAT, planAT);
-        cupdlpx_spmv_execute(sparse_handle, matA, vecDual, vecEigen, dBufferA, planA);
+        cupdlpx_spmv_execute(sparse_handle, ctx->matAT, ctx->vecNextEigen, ctx->vecDual, ctx->dBufferAT, ctx->planAT);
+        if (d_col_mask)
+            elementwise_mask_kernel<<<col_blocks, THREADS_PER_BLOCK, 0, handle_stream>>>(
+                ctx->dual_product_d, d_col_mask, n);
+        cupdlpx_spmv_execute(sparse_handle, ctx->matA, ctx->vecDual, ctx->vecEigen, ctx->dBufferA, ctx->planA);
+        if (d_row_mask)
+            elementwise_mask_kernel<<<row_blocks, THREADS_PER_BLOCK, 0, handle_stream>>>(eigenvector_d, d_row_mask, m);
 
-        CUBLAS_CHECK(cublasDdot(blas_handle, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
+        CUBLAS_CHECK(cublasDdot(blas_handle, m, next_eigenvector_d, 1, eigenvector_d, 1, &max_singular_value_squared));
+        if (!isfinite(max_singular_value_squared) || max_singular_value_squared <= 0.0)
+        {
+            result.status = SV_ESTIMATOR_DEGENERATE;
+            break;
+        }
 
-        double neg_sigma_sq = -sigma_max_sq;
-        CUBLAS_CHECK(cublasDscal(blas_handle, m, &neg_sigma_sq, next_eigenvector_d, 1));
+        if (opts->abort_singular_value_threshold > 0.0 &&
+            sqrt(max_singular_value_squared) >= opts->abort_singular_value_threshold)
+        {
+            result.status = SV_ESTIMATOR_ABORTED;
+            break;
+        }
+
+        double negative_max_singular_value_squared = -max_singular_value_squared;
+        CUBLAS_CHECK(cublasDscal(blas_handle, m, &negative_max_singular_value_squared, next_eigenvector_d, 1));
         CUBLAS_CHECK(cublasDaxpy(blas_handle, m, &one, eigenvector_d, 1, next_eigenvector_d, 1));
 
         double residual_norm;
         CUBLAS_CHECK(cublasDnrm2_v2_64(blas_handle, m, next_eigenvector_d, 1, &residual_norm));
-
-        if (residual_norm < tolerance * fmin(1.0, sigma_max_sq))
+        if (!isfinite(residual_norm))
+        {
+            result.status = SV_ESTIMATOR_DEGENERATE;
             break;
+        }
+
+        /* Use an absolute test above max_singular_value_squared = 1 and a relative test below it;
+           a purely absolute test is vacuously satisfied for operators with norm far below 1. */
+        if (residual_norm < opts->tolerance * fmin(1.0, max_singular_value_squared))
+        {
+            result.status = SV_ESTIMATOR_CONVERGED;
+            break;
+        }
     }
 
-    CUDA_CHECK(cudaFree(dBufferAT));
-    CUDA_CHECK(cudaFree(dBufferA));
-    cupdlpx_spmv_release(descrAT, planAT);
-    cupdlpx_spmv_release(descrA, planA);
-    CUSPARSE_CHECK(cusparseDestroySpMat(matA));
-    CUSPARSE_CHECK(cusparseDestroySpMat(matAT));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(vecEigen));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(vecNextEigen));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(vecDual));
-    CUDA_CHECK(cudaFree(eigenvector_d));
-    CUDA_CHECK(cudaFree(next_eigenvector_d));
-    CUDA_CHECK(cudaFree(dual_product_d));
-
-    return sqrt(sigma_max_sq);
+    if (result.status != SV_ESTIMATOR_DEGENERATE)
+    {
+        result.max_singular_value = sqrt(max_singular_value_squared);
+    }
+    ctx->have_warm_start = result.status != SV_ESTIMATOR_DEGENERATE;
+    return result;
 }
 
 void compute_interaction_and_movement(pdhg_solver_state_t *state, double *interaction, double *movement)
@@ -280,33 +405,36 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
                                 const restart_parameters_t *restart_params,
                                 int termination_evaluation_frequency)
 {
-    bool do_restart = false;
+    const char *reason = NULL;
     if (solver_state->total_count == termination_evaluation_frequency)
     {
-        do_restart = true;
+        /* inner_count == total_count at the first check, so the long-inner-loop criterion holds */
+        reason = "long inner loop";
     }
     else if (solver_state->total_count > termination_evaluation_frequency)
     {
         if (solver_state->fixed_point_error <=
             restart_params->sufficient_reduction_for_restart * solver_state->initial_fixed_point_error)
         {
-            do_restart = true;
+            reason = "sufficient decay";
         }
-        if (solver_state->fixed_point_error <=
-            restart_params->necessary_reduction_for_restart * solver_state->initial_fixed_point_error)
+        else if (solver_state->fixed_point_error <=
+                     restart_params->necessary_reduction_for_restart * solver_state->initial_fixed_point_error &&
+                 solver_state->fixed_point_error > solver_state->last_trial_fixed_point_error)
         {
-            if (solver_state->fixed_point_error > solver_state->last_trial_fixed_point_error)
-            {
-                do_restart = true;
-            }
+            reason = "necessary decay + no local progress";
         }
-        if (solver_state->inner_count >= restart_params->artificial_restart_threshold * solver_state->total_count)
+        else if (solver_state->inner_count >= restart_params->artificial_restart_threshold * solver_state->total_count)
         {
-            do_restart = true;
+            reason = "long inner loop";
         }
     }
     solver_state->last_trial_fixed_point_error = solver_state->fixed_point_error;
-    return do_restart;
+    if (reason)
+    {
+        solver_state->last_restart_reason = reason;
+    }
+    return reason != NULL;
 }
 
 void set_default_parameters(pdhg_parameters_t *params)
@@ -317,6 +445,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->pock_chambolle_alpha = 1.0;
     params->bound_objective_rescaling = true;
     params->verbose = true;
+    params->debug = false;
     params->termination_evaluation_frequency = 200;
     params->feasibility_polishing = false;
     params->reflection_coefficient = 1.0;
@@ -342,6 +471,17 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->presolve = true;
     params->matrix_zero_tol = 1e-9;
     params->infinite_bound = 1e20;
+    params->active_set_boost = true;
+    params->asb_activation_tol = 1e-4;
+    params->asb_window_iter = 10000;
+    params->asb_safety_factor = 0.9;
+    params->asb_max_reverts = 2;
+    params->asb_min_raise_ratio = 1.1;
+    params->asb_reestimate_change_ratio = 0.01;
+    params->asb_constraint_tol = 1e-8;
+    params->asb_variable_tol = 1e-8;
+    params->asb_divergence_ceiling_ratio = 0.7;
+    params->asb_divergence_margin = 0.05;
 }
 
 #define MATRIX_LARGE_VALUE 1e15
@@ -586,6 +726,26 @@ void restore_original_objective_sense(cupdlpx_result_t *result, objective_sense_
         }                                                                                                              \
     } while (0)
 
+/* Width of the iteration table for the given options; the banner uses it too. */
+static int iteration_table_width(const pdhg_parameters_t *params)
+{
+    const bool asb_columns = params->debug && params->active_set_boost;
+    return 88 + (params->debug ? 10 : 0) + (asb_columns ? 30 : 0);
+}
+
+static void print_rule(int width)
+{
+    for (int i = 0; i < width; ++i)
+        putchar('-');
+    putchar('\n');
+}
+
+static void print_centered(const char *text, int width)
+{
+    int pad = (width - (int)strlen(text)) / 2;
+    printf("%*s%s\n", pad > 0 ? pad : 0, "", text);
+}
+
 void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *problem)
 {
     pdhg_parameters_t default_params;
@@ -594,17 +754,14 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
     {
         return;
     }
-    printf("---------------------------------------------------------------------"
-           "------------------\n");
-    printf("                                    cuPDLPx v%s                      "
-           "              \n",
-           CUPDLPX_VERSION);
-    printf("                        A GPU-Accelerated First-Order LP Solver      "
-           "                  \n");
-    printf("               (c) Haihao Lu, Massachusetts Institute of Technology, "
-           "2025              \n");
-    printf("---------------------------------------------------------------------"
-           "------------------\n");
+    const int width = iteration_table_width(params);
+    char version_line[64];
+    snprintf(version_line, sizeof(version_line), "cuPDLPx v%s", CUPDLPX_VERSION);
+    print_rule(width);
+    print_centered(version_line, width);
+    print_centered("A GPU-Accelerated First-Order LP Solver", width);
+    print_centered("(c) Haihao Lu, Massachusetts Institute of Technology, 2025", width);
+    print_rule(width);
 
     printf("Problem: %d rows, %d columns, %d nonzeros\n",
            problem->num_constraints,
@@ -640,8 +797,23 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
                    params->termination_criteria.eps_infeasible_relative,
                    default_params.termination_criteria.eps_infeasible_relative);
     PRINT_DIFF_BOOL("presolve", params->presolve, default_params.presolve);
+    PRINT_DIFF_BOOL("debug", params->debug, default_params.debug);
     PRINT_DIFF_DBL("matrix_zero_tol", params->matrix_zero_tol, default_params.matrix_zero_tol);
     PRINT_DIFF_DBL("infinite_bound", params->infinite_bound, default_params.infinite_bound);
+    PRINT_DIFF_BOOL("active_set_boost", params->active_set_boost, default_params.active_set_boost);
+    PRINT_DIFF_DBL("asb_activation_tol", params->asb_activation_tol, default_params.asb_activation_tol);
+    PRINT_DIFF_INT("asb_window_iter", params->asb_window_iter, default_params.asb_window_iter);
+    PRINT_DIFF_DBL("asb_safety_factor", params->asb_safety_factor, default_params.asb_safety_factor);
+    PRINT_DIFF_INT("asb_max_reverts", params->asb_max_reverts, default_params.asb_max_reverts);
+    PRINT_DIFF_DBL("asb_min_raise_ratio", params->asb_min_raise_ratio, default_params.asb_min_raise_ratio);
+    PRINT_DIFF_DBL(
+        "asb_reestimate_change_ratio", params->asb_reestimate_change_ratio, default_params.asb_reestimate_change_ratio);
+    PRINT_DIFF_DBL("asb_constraint_tol", params->asb_constraint_tol, default_params.asb_constraint_tol);
+    PRINT_DIFF_DBL("asb_variable_tol", params->asb_variable_tol, default_params.asb_variable_tol);
+    PRINT_DIFF_DBL("asb_divergence_ceiling_ratio",
+                   params->asb_divergence_ceiling_ratio,
+                   default_params.asb_divergence_ceiling_ratio);
+    PRINT_DIFF_DBL("asb_divergence_margin", params->asb_divergence_margin, default_params.asb_divergence_margin);
 }
 
 #undef PRINT_DIFF_INT
@@ -652,8 +824,7 @@ void pdhg_final_log(const cupdlpx_result_t *result, const pdhg_parameters_t *par
 {
     if (params->verbose)
     {
-        printf("-------------------------------------------------------------------"
-               "--------------------\n");
+        print_rule(iteration_table_width(params));
         printf("Solution Summary\n");
         printf("  Status                 : %s\n", termination_reason_to_string(result->termination_reason));
         if (params->presolve)
@@ -668,44 +839,76 @@ void pdhg_final_log(const cupdlpx_result_t *result, const pdhg_parameters_t *par
         printf("  Objective gap          : %.3e\n", result->relative_objective_gap);
         printf("  Primal infeas          : %.3e\n", result->relative_primal_residual);
         printf("  Dual infeas            : %.3e\n", result->relative_dual_residual);
+        if (params->active_set_boost)
+        {
+            printf("  Active set boost       : %d raises, %d reverts, %d PI iterations\n",
+                   result->asb_raise_count,
+                   result->asb_revert_count,
+                   result->asb_pi_iterations);
+        }
     }
-
-    // if (stats != NULL && stats->n_rows_original > 0) {
-    //     printf("\nPresolve Summary\n");
-    //     printf("  [Dimensions]\n");
-    //     printf("  Original           : %d rows, %d cols, %d nnz\n",
-    //            stats->n_rows_original, stats->n_cols_original, stats->nnz_original);
-    //     printf("  Reduced            : %d rows, %d cols, %d nnz\n",
-    //            stats->n_rows_reduced, stats->n_cols_reduced, stats->nnz_reduced);
-
-    //     printf("  [Reduction Details (NNZ Removed)]\n");
-    //     printf("  Trivial            : %d\n", stats->nnz_removed_trivial);
-    //     printf("  Fast               : %d\n", stats->nnz_removed_fast);
-    //     printf("  Primal Propagation : %d\n", stats->nnz_removed_primal_propagation);
-    //     printf("  Parallel Rows      : %d\n", stats->nnz_removed_parallel_rows);
-    //     printf("  Parallel Cols      : %d\n", stats->nnz_removed_parallel_cols);
-
-    //     printf("  [Timing]\n");
-    //     printf("  Total Presolve     : %.3g sec\n", stats->presolve_total_time);
-    //     printf("  Init               : %.3g sec\n", stats->ps_time_init);
-    //     printf("  Fast               : %.3g sec\n", stats->ps_time_fast);
-    //     printf("  Medium             : %.3g sec\n", stats->ps_time_medium);
-    //     printf("  Primal Propagation : %.3g sec\n", stats->ps_time_primal_propagation);
-    //     printf("  Parallel Rows      : %.3g sec\n", stats->ps_time_parallel_rows);
-    //     printf("  Parallel Cols      : %.3g sec\n", stats->ps_time_parallel_cols);
-    //     printf("  Postsolve          : %.3g sec\n", stats->ps_time_post_solve);
-    // }
 }
 
-void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
+void display_iteration_header(const pdhg_parameters_t *params)
 {
-    if (!verbose)
+    if (!params->verbose)
+    {
+        return;
+    }
+    const bool asb_columns = params->debug && params->active_set_boost;
+    const int width = iteration_table_width(params);
+    printf("\n*: restart triggered\n");
+    print_rule(width);
+    printf(" %s | %s | %s | %s",
+           "   runtime    ",
+           "    objective     ",
+           "  absolute residuals   ",
+           "  relative residuals   ");
+    if (params->debug)
+    {
+        printf(" | %s", " primal");
+    }
+    if (asb_columns)
+    {
+        printf(" | %s", "      active-set boost     ");
+    }
+    printf(" \n");
+    printf(" %s %s | %s %s | %s %s %s | %s %s %s",
+           "  iter",
+           "  time ",
+           " pr obj ",
+           "  du obj ",
+           " pr res",
+           " du res",
+           "  gap  ",
+           " pr res",
+           " du res",
+           "  gap  ");
+    if (params->debug)
+    {
+        printf(" | %s", " weight");
+    }
+    if (asb_columns)
+    {
+        printf(" | %s %s %s", "  step ", "free var", "active con");
+    }
+    printf(" \n");
+    print_rule(width);
+}
+
+void display_iteration_stats(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
+{
+    if (!params->verbose)
     {
         return;
     }
     if (state->total_count % get_print_frequency(state->total_count) == 0)
     {
-        printf("%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e \n",
+        /* a leading star marks that at least one restart happened since the previous row */
+        char restart_marker = state->restart_count > state->logged_restart_count ? '*' : ' ';
+        state->logged_restart_count = state->restart_count;
+        printf("%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e",
+               restart_marker,
                state->total_count,
                state->cumulative_time_sec,
                state->original_objective_sign * state->primal_objective_value,
@@ -716,6 +919,22 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
                state->relative_primal_residual,
                state->relative_dual_residual,
                state->relative_objective_gap);
+        if (params->debug)
+        {
+            printf(" | %.1e", state->primal_weight);
+        }
+        if (params->debug && params->active_set_boost)
+        {
+            long free_variables = state->asb_free_variables;
+            long binding_constraints = state->asb_binding_constraints;
+            if (state->total_count == 0)
+            {
+                free_variables = state->num_variables;
+                binding_constraints = state->num_constraints;
+            }
+            printf(" | %.1e %8ld %10ld", state->step_size, free_variables, binding_constraints);
+        }
+        printf(" \n");
     }
 }
 
@@ -1021,15 +1240,15 @@ void compute_infeasibility_information(pdhg_solver_state_t *state)
                                                           THREADS_PER_BLOCK,
                                                           0,
                                                           state->stream>>>(state->dual_product,
-                                                                           state->dual_slack,
+                                                                           state->infeasibility_dual_scratch,
                                                                            state->variable_lower_bound_finite_val,
                                                                            state->variable_upper_bound_finite_val,
                                                                            state->num_variables);
 
     double sum_primal_slack =
         get_vector_sum(state->blas_handle, state->num_constraints, state->ones_dual_d, state->primal_slack);
-    double sum_dual_slack =
-        get_vector_sum(state->blas_handle, state->num_variables, state->ones_primal_d, state->dual_slack);
+    double sum_dual_slack = get_vector_sum(
+        state->blas_handle, state->num_variables, state->ones_primal_d, state->infeasibility_dual_scratch);
     state->dual_ray_objective =
         (sum_primal_slack + sum_dual_slack) / (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 
@@ -1045,15 +1264,16 @@ void compute_infeasibility_information(pdhg_solver_state_t *state)
         state->variable_lower_bound,
         state->variable_upper_bound,
         state->num_variables,
-        state->dual_slack,
+        state->infeasibility_dual_scratch,
         state->variable_rescaling);
 
     state->max_primal_ray_infeasibility =
         get_vector_inf_norm(state->blas_handle, state->num_constraints, state->primal_slack);
-    double dual_slack_norm = get_vector_inf_norm(state->blas_handle, state->num_variables, state->dual_slack);
-    state->max_dual_ray_infeasibility = dual_slack_norm;
+    double dual_scratch_norm =
+        get_vector_inf_norm(state->blas_handle, state->num_variables, state->infeasibility_dual_scratch);
+    state->max_dual_ray_infeasibility = dual_scratch_norm;
 
-    double scaling_factor = fmax(dual_ray_inf_norm, dual_slack_norm);
+    double scaling_factor = fmax(dual_ray_inf_norm, dual_scratch_norm);
     if (scaling_factor > 0.0)
     {
         state->max_dual_ray_infeasibility /= scaling_factor;

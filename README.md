@@ -103,6 +103,7 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
 | `-v`, `--verbose` | `flag` | Verbose logging (enabled by default). | `true` |
 | `-q`, `--quiet` | `flag` | Disable verbose logging. | `false` |
+| `--debug` | `flag` | Developer diagnostics (implies verbose). | `false` |
 | `--time_limit` | `double` | Time limit in seconds. | `3600.0` |
 | `--iter_limit` | `int` | Iteration limit. | `2147483647` |
 | `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf` | `l2` |
@@ -119,6 +120,19 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `--no_presolve` | `flag` | Disable presolve | `enabled` |
 | `-f`,`--feasibility_polishing` |`flag` | Run the polishing loop | `false` |
 | `--eps_feas_polish` | `double` | Relative tolerance for polishing | `1e-6`  |
+| `--no_active_set_boost` | `flag` | Disable the active-set stepsize boost | `enabled` |
+| `--asb_activation_tol` | `double` | Residual threshold at which the boost activates | `1e-4` |
+| `--asb_window_iter` | `int` | Number of recent iterations used to identify the active set | `10000` |
+| `--asb_safety_factor` | `double` | Boosted step = factor / estimated singular value | `0.9` |
+| `--asb_max_reverts` | `int` | Divergences tolerated before the boost turns off; a diverged step is always reverted | `2` |
+| `--asb_min_raise_ratio` | `double` | Minimum ratio for a step increase | `1.1` |
+| `--asb_reestimate_change_ratio` | `double` | Fraction of the active set that must change before re-estimating | `0.01` |
+| `--asb_constraint_tol` | `double` | Tolerance for treating a constraint as binding | `1e-8` |
+| `--asb_variable_tol` | `double` | Tolerance for treating a variable as at its bound | `1e-8` |
+| `--asb_divergence_ceiling_ratio` | `double` | Step ceiling after a revert, relative to the diverged step | `0.7` |
+| `--asb_divergence_margin` | `double` | Allowed fixed-point error increase before a revert | `0.05` |
+
+The active-set boost enlarges the stepsize late in the solve, based on the constraints and bounds identified as active.
 
 #### Output Files
 The solver generates three text files in the specified <output_directory>. The filenames are derived from the input file's basename. For an input `INSTANCE.mps.gz`, the output will be:

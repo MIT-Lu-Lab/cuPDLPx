@@ -14,4 +14,4 @@
 
 """Thin re-export of the compiled cuPDLPx core extension (_cupdlpx_core)."""
 
-from ._cupdlpx_core import solve_once, get_default_params, read_mps
+from ._cupdlpx_core import solve_once, get_default_params, validate_params, read_mps

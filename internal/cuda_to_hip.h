@@ -50,6 +50,7 @@ limitations under the License.
 #define cudaMemcpy hipMemcpy
 #define cudaMemcpyAsync hipMemcpyAsync
 #define cudaMemset hipMemset
+#define cudaMemsetAsync hipMemsetAsync
 
 // Memory copy kinds
 #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
@@ -66,6 +67,7 @@ limitations under the License.
 #define cudaStream_t hipStream_t
 #define cudaStreamCreate hipStreamCreate
 #define cudaStreamDestroy hipStreamDestroy
+#define cudaStreamSynchronize hipStreamSynchronize
 
 // Device synchronization
 #define cudaDeviceSynchronize hipDeviceSynchronize
@@ -127,6 +129,7 @@ static inline const char *cublasGetStatusName(hipblasStatus_t status)
 #define cusparseCreate hipsparseCreate
 #define cusparseDestroy hipsparseDestroy
 #define cusparseSetStream hipsparseSetStream
+#define cusparseGetStream hipsparseGetStream
 #define cusparseStatus_t hipsparseStatus_t
 #define CUSPARSE_STATUS_SUCCESS HIPSPARSE_STATUS_SUCCESS
 #define cusparseGetErrorName hipsparseGetErrorName

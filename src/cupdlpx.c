@@ -179,6 +179,85 @@ void set_start_values(lp_problem_t *prob, const double *primal, const double *du
     }
 }
 
+/* The single authority on parameter ranges. Front ends only parse and convert
+   types; every semantic check lives here. */
+#define CUPDLPX_CHECK_PARAM(cond, ...)                                                                                 \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        if (!(cond))                                                                                                   \
+        {                                                                                                              \
+            if (error_message && error_message_size > 0)                                                               \
+            {                                                                                                          \
+                snprintf(error_message, error_message_size, __VA_ARGS__);                                              \
+            }                                                                                                          \
+            return 1;                                                                                                  \
+        }                                                                                                              \
+    } while (0)
+
+int cupdlpx_validate_parameters(const pdhg_parameters_t *p, char *error_message, size_t error_message_size)
+{
+    CUPDLPX_CHECK_PARAM(p != NULL, "params must not be NULL");
+    CUPDLPX_CHECK_PARAM(p->termination_evaluation_frequency >= 3,
+                        "termination_evaluation_frequency must be >= 3 (got %d)",
+                        p->termination_evaluation_frequency);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.iteration_limit >= 0,
+                        "iteration_limit must be nonnegative (got %d)",
+                        p->termination_criteria.iteration_limit);
+    CUPDLPX_CHECK_PARAM(p->geometric_mean_iterations >= 0,
+                        "geometric_mean_iterations must be nonnegative (got %d)",
+                        p->geometric_mean_iterations);
+    CUPDLPX_CHECK_PARAM(
+        p->l_inf_ruiz_iterations >= 0, "l_inf_ruiz_iterations must be nonnegative (got %d)", p->l_inf_ruiz_iterations);
+    CUPDLPX_CHECK_PARAM(p->sv_max_iter > 0, "sv_max_iter must be positive (got %d)", p->sv_max_iter);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_optimal_relative > 0.0,
+                        "eps_optimal_relative must be positive (got %g)",
+                        p->termination_criteria.eps_optimal_relative);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_feasible_relative > 0.0,
+                        "eps_feasible_relative must be positive (got %g)",
+                        p->termination_criteria.eps_feasible_relative);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_infeasible_relative > 0.0,
+                        "eps_infeasible_relative must be positive (got %g)",
+                        p->termination_criteria.eps_infeasible_relative);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_feas_polish_relative > 0.0,
+                        "eps_feas_polish_relative must be positive (got %g)",
+                        p->termination_criteria.eps_feas_polish_relative);
+    CUPDLPX_CHECK_PARAM(p->sv_tol > 0.0, "sv_tol must be positive (got %g)", p->sv_tol);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.time_sec_limit >= 0.0,
+                        "time_sec_limit must be nonnegative (got %g)",
+                        p->termination_criteria.time_sec_limit);
+    CUPDLPX_CHECK_PARAM(p->infinite_bound > 0.0, "infinite_bound must be positive (got %g)", p->infinite_bound);
+    CUPDLPX_CHECK_PARAM(p->matrix_zero_tol >= 0.0, "matrix_zero_tol must be nonnegative (got %g)", p->matrix_zero_tol);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_activation_tol) && p->asb_activation_tol >= 0.0,
+                        "asb_activation_tol must be finite and >= 0 (got %g)",
+                        p->asb_activation_tol);
+    CUPDLPX_CHECK_PARAM(p->asb_window_iter > 0, "asb_window_iter must be positive (got %d)", p->asb_window_iter);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_safety_factor) && p->asb_safety_factor > 0.0,
+                        "asb_safety_factor must be finite and positive (got %g)",
+                        p->asb_safety_factor);
+    CUPDLPX_CHECK_PARAM(p->asb_max_reverts >= 0, "asb_max_reverts must be nonnegative (got %d)", p->asb_max_reverts);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_min_raise_ratio) && p->asb_min_raise_ratio >= 1.0,
+                        "asb_min_raise_ratio must be finite and >= 1 (got %g)",
+                        p->asb_min_raise_ratio);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_reestimate_change_ratio) && p->asb_reestimate_change_ratio >= 0.0,
+                        "asb_reestimate_change_ratio must be finite and >= 0 (got %g)",
+                        p->asb_reestimate_change_ratio);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_constraint_tol) && p->asb_constraint_tol >= 0.0,
+                        "asb_constraint_tol must be finite and >= 0 (got %g)",
+                        p->asb_constraint_tol);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_variable_tol) && p->asb_variable_tol >= 0.0,
+                        "asb_variable_tol must be finite and >= 0 (got %g)",
+                        p->asb_variable_tol);
+    CUPDLPX_CHECK_PARAM(p->asb_divergence_ceiling_ratio > 0.0 && p->asb_divergence_ceiling_ratio <= 1.0,
+                        "asb_divergence_ceiling_ratio must be in (0, 1] (got %g)",
+                        p->asb_divergence_ceiling_ratio);
+    CUPDLPX_CHECK_PARAM(isfinite(p->asb_divergence_margin) && p->asb_divergence_margin >= 0.0,
+                        "asb_divergence_margin must be finite and >= 0 (got %g)",
+                        p->asb_divergence_margin);
+    return 0;
+}
+
+#undef CUPDLPX_CHECK_PARAM
+
 cupdlpx_result_t *solve_lp_problem(lp_problem_t *prob, const pdhg_parameters_t *params)
 {
     // argument checks
@@ -197,6 +276,10 @@ cupdlpx_result_t *solve_lp_problem(lp_problem_t *prob, const pdhg_parameters_t *
     else
     {
         set_default_parameters(&local_params);
+    }
+    if (local_params.debug)
+    {
+        local_params.verbose = true;
     }
 
     // call optimizer
