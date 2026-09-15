@@ -457,7 +457,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->termination_criteria.time_sec_limit = 3600.0;
     params->termination_criteria.iteration_limit = INT32_MAX;
     params->termination_criteria.eps_feas_polish_relative = 1e-6;
-    params->termination_criteria.eps_infeasible_relative = 1e-14;
+    params->termination_criteria.eps_infeasible_relative = 1e-10;
 
     params->restart_params.artificial_restart_threshold = 0.36;
     params->restart_params.sufficient_reduction_for_restart = 0.2;
@@ -1268,10 +1268,11 @@ void compute_infeasibility_information(pdhg_solver_state_t *state)
         state->variable_rescaling);
 
     state->max_primal_ray_infeasibility =
-        get_vector_inf_norm(state->blas_handle, state->num_constraints, state->primal_slack);
+        get_vector_inf_norm(state->blas_handle, state->num_constraints, state->primal_slack) /
+        state->constraint_bound_rescaling;
     double dual_scratch_norm =
         get_vector_inf_norm(state->blas_handle, state->num_variables, state->infeasibility_dual_scratch);
-    state->max_dual_ray_infeasibility = dual_scratch_norm;
+    state->max_dual_ray_infeasibility = dual_scratch_norm / state->objective_vector_rescaling;
 
     double scaling_factor = fmax(dual_ray_inf_norm, dual_scratch_norm);
     if (scaling_factor > 0.0)
