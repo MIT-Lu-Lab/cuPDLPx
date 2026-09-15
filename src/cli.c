@@ -183,6 +183,9 @@ void print_usage(const char *prog_name)
             "      --eps_feas <tolerance>          "
             "Relative feasibility tolerance (default: 1e-4).\n");
     fprintf(stderr,
+            "      --eps_infeasible <tolerance>    "
+            "Relative infeasibility tolerance (default: 1e-10).\n");
+    fprintf(stderr,
             "      --geo_mean_iter <int>           "
             "Iterations of geometric-mean scaling (default: 12).\n");
     fprintf(stderr,
@@ -271,6 +274,7 @@ int main(int argc, char *argv[])
                                            {"iter_limit", required_argument, 0, 1002},
                                            {"eps_opt", required_argument, 0, 1003},
                                            {"eps_feas", required_argument, 0, 1004},
+                                           {"eps_infeasible", required_argument, 0, 1005},
                                            {"eps_feas_polish", required_argument, 0, 1006},
                                            {"feasibility_polishing", no_argument, 0, 'f'},
                                            {"geo_mean_iter", required_argument, 0, 1018},
@@ -324,6 +328,9 @@ int main(int argc, char *argv[])
                 break;
             case 1004: // --eps_feas
                 params.termination_criteria.eps_feasible_relative = atof(optarg);
+                break;
+            case 1005: // --eps_infeasible
+                params.termination_criteria.eps_infeasible_relative = atof(optarg);
                 break;
             case 1006: // --eps_feas_polish_relative
                 params.termination_criteria.eps_feas_polish_relative = atof(optarg);

@@ -109,6 +109,7 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf` | `l2` |
 | `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
+| `--eps_infeasible` | `double` | Relative tolerance on the ray certificate for declaring infeasibility. | `1e-10` |
 | `--geo_mean_iter` | `int` | Iterations of geometric-mean scaling | `12` |
 | `--l_inf_ruiz_iter` | `int` | Iterations of L-inf Ruiz rescaling| `10` |
 | `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling | `enabled` |
