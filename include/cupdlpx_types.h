@@ -108,6 +108,7 @@ extern "C"
         bool feasibility_polishing;
         norm_type_t optimality_norm;
         bool presolve;
+        bool infeasibility_detection;
         double matrix_zero_tol;
         double infinite_bound;
         int geometric_mean_iterations;

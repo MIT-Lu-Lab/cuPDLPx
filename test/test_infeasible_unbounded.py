@@ -75,3 +75,29 @@ def test_unbounded_lp(base_lp_data, atol):
     assert model.Status == PDLP.DUAL_INFEASIBLE, f"Unexpected termination status: {model.Status}"
     # check primal ray
     assert model.PrimalRayLinObj < -atol, f"PrimalRayLinObj should be negative for dual infeasible, got {model.PrimalRayLinObj}"
+
+
+def test_infeasible_tol_zero_disables_detection(base_lp_data):
+    """
+    With InfeasibleTol=0 the solver never declares infeasibility and runs the
+    infeasible LP into its iteration limit instead.
+    """
+    c, A, l, u, lb, ub = base_lp_data
+    l, u = l.copy(), u.copy()
+    l[0], u[0] = 10, 10
+    model = Model(c, A, l, u, lb, ub)
+    model.setParams(OutputFlag=False, Presolve=False, InfeasibleTol=0.0, IterationLimit=2000)
+    model.optimize()
+    assert model.Status == PDLP.ITERATION_LIMIT, f"Unexpected termination status: {model.Status}"
+
+def test_infeasibility_detection_flag_disables_detection(base_lp_data):
+    """
+    InfeasibilityDetection=False has the same effect as InfeasibleTol=0.
+    """
+    c, A, l, u, lb, ub = base_lp_data
+    l, u = l.copy(), u.copy()
+    l[0], u[0] = 10, 10
+    model = Model(c, A, l, u, lb, ub)
+    model.setParams(OutputFlag=False, Presolve=False, InfeasibilityDetection=False, IterationLimit=2000)
+    model.optimize()
+    assert model.Status == PDLP.ITERATION_LIMIT, f"Unexpected termination status: {model.Status}"

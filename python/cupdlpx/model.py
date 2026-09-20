@@ -37,6 +37,7 @@ _BOOL_PARAMS = frozenset(
         "bound_objective_rescaling",
         "feasibility_polishing",
         "presolve",
+        "infeasibility_detection",
     }
 )
 _INT_PARAMS = frozenset(
@@ -71,13 +72,13 @@ _POSITIVE_FLOAT_PARAMS = frozenset(
     {
         "eps_optimal_relative",
         "eps_feasible_relative",
-        "eps_infeasible_relative",
         "eps_feas_polish_relative",
         "sv_tol",
         "infinite_bound",
     }
 )
-_NONNEGATIVE_FLOAT_PARAMS = frozenset({"time_sec_limit", "matrix_zero_tol"})
+# eps_infeasible_relative = 0 also disables detection, like infeasibility_detection=False
+_NONNEGATIVE_FLOAT_PARAMS = frozenset({"time_sec_limit", "matrix_zero_tol", "eps_infeasible_relative"})
 _STRING_PARAMS = frozenset({"optimality_norm"})
 
 # int params are stored as C int32 on the backend

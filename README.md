@@ -48,7 +48,7 @@ This will create the solver binary at `./build/cupdlpx`.
 #### Building for AMD GPUs (ROCm/HIP)
 To target AMD GPUs, configure with `-DUSE_HIP=ON` and select the GPU
 architecture with `-DCMAKE_HIP_ARCHITECTURES`. The CUDA sources are compiled
-as HIP and the cuBLAS/cuSPARSE/CUB calls are mapped to hipBLAS/hipSPARSE/hipCUB.
+as HIP and the cuBLAS/cuSPARSE/CUB/Thrust calls are mapped to hipBLAS/hipSPARSE/hipCUB/rocThrust.
 ```bash
 cmake -B build -DUSE_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx90a -DCMAKE_PREFIX_PATH=/opt/rocm
 cmake --build build --clean-first
@@ -57,7 +57,7 @@ Set `CMAKE_HIP_ARCHITECTURES` to match your GPU (for example `gfx90a` for
 MI200, `gfx1100` for RDNA3 desktop, or `gfx1201` for RDNA4). If the ROCm
 install is not on CMake's default search path, point `-DCMAKE_PREFIX_PATH` at
 it (e.g. `/opt/rocm`) so `find_package` can locate hip, hipBLAS, hipSPARSE,
-and hipCUB. The resulting `./build/cupdlpx` binary is used exactly as in the
+hipCUB, and rocThrust. The resulting `./build/cupdlpx` binary is used exactly as in the
 CUDA build.
 
 #### Verifying the Installation
@@ -117,6 +117,8 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `--sv_max_iter` | `int` | Max iterations for singular value estimation | `5000` |
 | `--sv_tol` | `float` | Tolerance for singular value estimation | `1e-4` |
 | `--no_presolve` | `flag` | Disable presolve | `enabled` |
+| `--eps_infeasible` | `double` | Largest relative constraint residual of an accepted ray certificate | `1e-8` |
+| `--no_infeasibility_detection` | `flag` | Disable infeasibility detection | `enabled` |
 | `-f`,`--feasibility_polishing` |`flag` | Run the polishing loop | `false` |
 | `--eps_feas_polish` | `double` | Relative tolerance for polishing | `1e-6`  |
 

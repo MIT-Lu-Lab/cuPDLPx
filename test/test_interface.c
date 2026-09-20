@@ -227,7 +227,7 @@ int main()
     // Test 9: GPU solver path (presolve disabled) -- forces hipBLAS/hipSPARSE execution
     printf("\n=== Test 9: CSR Matrix (presolve disabled, GPU solver) ===\n");
     {
-        lp_problem_t *prob9 = create_lp_problem(c, &A_csr, l, u, NULL, NULL, NULL);
+        lp_problem_t *prob9 = create_lp_problem(c, &A_csr, l, u, NULL, NULL, NULL, NULL);
         if (!prob9)
         {
             fprintf(stderr, "[test] create_lp_problem failed for Test 9.\n");

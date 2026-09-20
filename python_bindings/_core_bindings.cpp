@@ -297,6 +297,7 @@ static py::dict get_default_params_py()
 
     // feasiblity polishing
     d["feasibility_polishing"] = p.feasibility_polishing;
+    d["infeasibility_detection"] = p.infeasibility_detection;
     d["eps_feas_polish_relative"] = p.termination_criteria.eps_feas_polish_relative;
 
     // Termination criteria norm
@@ -409,6 +410,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
 
     // Feasibility Polishing
     getb("feasibility_polishing", p->feasibility_polishing);
+    getb("infeasibility_detection", p->infeasibility_detection);
     getf("eps_feas_polish_relative", p->termination_criteria.eps_feas_polish_relative);
 
     // Termination criteria norm
@@ -437,8 +439,9 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
         throw std::invalid_argument("eps_optimal_relative must be positive.");
     if (p->termination_criteria.eps_feasible_relative <= 0.0)
         throw std::invalid_argument("eps_feasible_relative must be positive.");
-    if (p->termination_criteria.eps_infeasible_relative <= 0.0)
-        throw std::invalid_argument("eps_infeasible_relative must be positive.");
+    if (p->termination_criteria.eps_infeasible_relative < 0.0)
+        throw std::invalid_argument(
+            "eps_infeasible_relative must be non-negative (0 disables infeasibility detection).");
     if (p->termination_criteria.eps_feas_polish_relative <= 0.0)
         throw std::invalid_argument("eps_feas_polish_relative must be positive.");
     if (p->sv_tol <= 0.0)

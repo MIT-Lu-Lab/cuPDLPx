@@ -70,6 +70,11 @@ endif()
 # -----------------------------------------------------------------------------
 add_library(cupdlpx_compile_flags INTERFACE)
 
+if(NOT USE_HIP)
+  # reduce.h passes device lambdas to thrust::transform_iterator
+  target_compile_options(cupdlpx_compile_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
+endif()
+
 if(MSVC)
     target_compile_options(cupdlpx_compile_flags INTERFACE
         $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/O2 /W4 /Zi>
@@ -126,6 +131,7 @@ if(USE_HIP)
   find_package(hipsparse REQUIRED)
   find_package(hipcub REQUIRED)
   find_package(rocprim REQUIRED)
+  find_package(rocthrust REQUIRED)
 endif()
 include(FetchContent)
 
@@ -206,6 +212,7 @@ if(USE_HIP)
     PUBLIC roc::hipblas
     PUBLIC roc::hipsparse
     PUBLIC hip::hipcub
+    PUBLIC roc::rocthrust
     PUBLIC ZLIB::ZLIB
     PUBLIC PSLP
   )
