@@ -14,8 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Detection of primal and dual infeasibility from ray certificates. See the
-// comment above compute_infeasibility_device for the method.
+// Detection of primal and dual infeasibility from ray certificates.
 
 #include "infeasibility.h"
 #include "reduce.h"
@@ -34,8 +33,7 @@ typedef struct
     double primal_ray_linear_objective;
     double max_dual_ray_infeasibility;
     double dual_ray_objective;
-    // the objective terms with absolute values, in the same scale as the
-    // objective terms above; the objective margin is measured against them
+    // the objective terms with absolute values; the margin is measured against them
     double primal_objective_abs;
     double dual_objective_abs;
 } ray_candidate_stats_t;
@@ -47,41 +45,28 @@ __global__ void abs_kernel(double *__restrict__ out, const double *__restrict__ 
         out[i] = fabs(x[i]);
 }
 
-// The candidate directions are stacked column by column into dense n x K and
-// m x K matrices, so that A and A^T are applied to all of them with one SpMM
-// each. |A| and |A^T| share the CSR indices of A and A^T and only store the
-// absolute values.
-//
-// A check has two rounds. The first fills prod_m with A D and prod_n with
-// A^T Y and reduces every scalar that depends on them. The second runs only
-// when some candidate passes its objective margin: it overwrites D with |D|
-// and prod_m with |A||D| (likewise on the dual side) and reduces their maxima.
-// The next check rewrites all four matrices.
-
-// The scalars of a check are the infeas[] members of device_scalars_t
-// (internal_types.h), one infeas_candidate_scalars_t per candidate.
-
+// The candidates are the columns of dense n x K and m x K matrices, so one SpMM
+// applies A or A^T to all of them. |A| and |A^T| reuse the CSR indices of A and
+// A^T.
 struct infeas_ctx
 {
     double *abs_val_A;
     double *abs_val_AT;
     cusparseSpMatDescr_t matA, matAT, matAbsA, matAbsAT;
-    // column-major, one column per candidate; the comment above says what
-    // each holds in the two rounds of a check
+    // column-major, one column per candidate; first round, then second round
     double *D;      // n x K: primal candidates, then |D|
     double *Y;      // m x K: dual candidates, then |Y|
     double *prod_m; // m x K: A D, then |A||D|
     double *prod_n; // n x K: A^T Y, then |A^T||Y|
     cusparseDnMatDescr_t dnD, dnY, dnProdM, dnProdN;
     void *buf_A, *buf_AT, *buf_absA, *buf_absAT;
-    // carried from the margin test to the finish of a check
+    // from the margin test, read when the best candidate is selected
     ray_candidate_stats_t stats[INFEAS_NUM_CANDIDATES];
     bool need_primal[INFEAS_NUM_CANDIDATES];
     bool need_dual[INFEAS_NUM_CANDIDATES];
 };
 
-// The candidate directions, each x + beta * y of two device vectors (y may be
-// NULL for x alone); passed to the kernels by value.
+// Candidate c is x[c] + beta[c] * y[c], or x[c] alone when y[c] is NULL.
 typedef struct
 {
     const double *x[INFEAS_NUM_CANDIDATES];
@@ -94,25 +79,22 @@ __device__ __forceinline__ double candidate_entry(const candidate_sources_t &src
     return src.y[c] ? src.x[c][i] + src.beta[c] * src.y[c][i] : src.x[c][i];
 }
 
-// Violation of the sign conditions of a primal ray: (A d)_i must be >= 0 when
-// the constraint has a finite lower bound and <= 0 when it has a finite upper
-// bound.
+// Sign conditions of a primal ray: (A d)_i >= 0 under a finite lower bound and
+// <= 0 under a finite upper bound.
 __host__ __device__ __forceinline__ double primal_ray_row_violation(double ad, bool lb_finite, bool ub_finite)
 {
     return (lb_finite ? fmax(-ad, 0.0) : 0.0) + (ub_finite ? fmax(ad, 0.0) : 0.0);
 }
 
-// Violation of the sign conditions of a dual ray on its reduced cost
-// r_j = -(A^T y)_j: r_j > 0 needs a finite lower bound on x_j and r_j < 0 a
-// finite upper bound.
+// Sign conditions of a dual ray on r = -A^T y: r_j > 0 needs a finite lower bound
+// on x_j and r_j < 0 a finite upper bound.
 __host__ __device__ __forceinline__ double dual_ray_reduced_cost_violation(double r, bool lb_finite, bool ub_finite)
 {
     return (lb_finite ? 0.0 : fmax(r, 0.0)) + (ub_finite ? 0.0 : fmax(-r, 0.0));
 }
 
-// The two summands of the contribution of a dual ray entry v (y_i, or the
-// reduced cost r_j) to the dual objective: v^+ times the finite lower bound
-// and v^- times the finite upper bound (0 when the bound is infinite).
+// Dual objective terms of an entry v (y_i or r_j): v^+ times the finite lower
+// bound and v^- times the finite upper bound.
 __host__ __device__ __forceinline__ double lower_bound_term(double v, double lower_bound_finite)
 {
     return fmax(v, 0.0) * lower_bound_finite;
@@ -123,8 +105,7 @@ __host__ __device__ __forceinline__ double upper_bound_term(double v, double upp
     return fmin(v, 0.0) * upper_bound_finite;
 }
 
-// Forms candidate blockIdx.y of a primal ray and projects it onto the sign
-// conditions of a certificate.
+// Forms candidate blockIdx.y and projects it onto the sign conditions.
 __global__ void form_primal_candidates_kernel(candidate_sources_t src,
                                               const double *__restrict__ var_lb,
                                               const double *__restrict__ var_ub,
@@ -161,8 +142,6 @@ __global__ void form_dual_candidates_kernel(candidate_sources_t src,
     Y[(size_t)c * m + i] = v;
 }
 
-// Replaces every entry of column blockIdx.y of a column-major matrix with its
-// absolute value.
 __global__ void abs_columns_kernel(double *__restrict__ X, int rows)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -170,9 +149,8 @@ __global__ void abs_columns_kernel(double *__restrict__ X, int rows)
         X[(size_t)blockIdx.y * rows + i] = fabs(X[(size_t)blockIdx.y * rows + i]);
 }
 
-// First-round scalars of candidate c from its columns of D, Y and the products
-// A D and A^T Y. Violations come in the rescaled space (they decide the
-// certificate) and in original units (they are reported).
+// First-round scalars of candidate c. Violations are reduced in the rescaled
+// space, which decides the certificate, and in original units, which are reported.
 static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
@@ -194,9 +172,7 @@ static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
     const double *constraint_lower_finite = state->constraint_lower_bound_finite_val;
     const double *constraint_upper_finite = state->constraint_upper_bound_finite_val;
 
-    // the primal ray d: its norm in the original space, the objective term
-    // c^T d with and without absolute values, and the violation of the sign
-    // conditions on A d
+    // primal ray d
     auto row_violation = [=] __host__ __device__(int i)
     { return primal_ray_row_violation(Ad[i], isfinite(constraint_lower[i]), isfinite(constraint_upper[i])); };
     reduce_max(
@@ -214,9 +190,7 @@ static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
         [=] __host__ __device__(int i) { return row_violation(i) * constraint_rescaling[i]; },
         &out->primal_ray.viol_max_orig);
 
-    // the dual ray y and its reduced cost r = -A^T y: the norm of y in the
-    // original space, the two parts of the dual objective term with and
-    // without absolute values, and the violation of the sign conditions on r
+    // dual ray y and its reduced cost r = -A^T y
     auto reduced_cost = [=] __host__ __device__(int j) { return -ATy[j]; };
     auto y_lower_term = [=] __host__ __device__(int i) { return lower_bound_term(y[i], constraint_lower_finite[i]); };
     auto y_upper_term = [=] __host__ __device__(int i) { return upper_bound_term(y[i], constraint_upper_finite[i]); };
@@ -371,39 +345,20 @@ void infeasibility_context_destroy(infeas_ctx_t *ctx)
 }
 
 // On an infeasible problem the PDHG iterates diverge along a direction whose
-// primal or dual part is an infeasibility certificate (Applegate et al. 2021;
-// Lu and Yang 2024 for Halpern PDHG). Three candidate directions are evaluated
-// at every termination check:
-//   0. the difference of iterates  T(z^k) - z^k,
-//   1. the iterate  T(z^k),
-//   2. the displacement since the last restart  T(z^k) - z^0.
-//
-// Each candidate is projected onto the sign conditions of a certificate. Its
-// primal part d certifies dual infeasibility and its dual part y primal
-// infeasibility when
-//   the objective term has the right sign with the relative margin
-//   delta = infeasible_objective_margin,
-//     -c^T d >= delta |c|^T |d|                   (primal ray)
-//     Omega(y) >= delta sum |terms of Omega(y)|   (dual ray)
-//   and the violation of the homogeneous constraints, relative to the
-//   activity the ray produces, is at most eps = eps_infeasible_relative,
-//     viol(A d) / max_i (|A||d|)_i <= eps         (primal ray)
-//     viol(A^T y) / max_j (|A^T||y|)_j <= eps     (dual ray).
-// The two maxima of a ratio are taken in the rescaled space, where the rows
-// have comparable scales; in original units a row with very large coefficients
-// can dominate the activity and hide a violated row. The certificate error
-// stored in the state is this ratio when the margin holds and INFINITY
-// otherwise. Per side the candidate with the smallest error is kept, and its
-// statistics are reported in original units.
-//
-// First round, kernels only: the candidates, A D and A^T Y, and every scalar
-// that depends on them. infeasibility_context_create must have run.
+// primal or dual part is an infeasibility certificate. Three candidates are
+// tried: T(z) - z, T(z), and T(z) - z^0 (the displacement since the last
+// restart). After projection onto the sign conditions, a primal ray d
+// certifies dual infeasibility and a dual ray y primal infeasibility when
+//   -c^T d   >= delta |c|^T |d|           and  viol(A d)   / max_i (|A||d|)_i   <= eps
+//   Omega(y) >= delta sum |Omega terms|   and  viol(A^T y) / max_j (|A^T||y|)_j <= eps
+// with delta = infeasible_objective_margin and eps = eps_infeasible_relative.
+// The ratio is taken in the rescaled space, where rows have comparable scales;
+// in original units a large row can hide a violated one.
 void compute_infeasibility_device(pdhg_solver_state_t *state)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints, K = INFEAS_NUM_CANDIDATES;
 
-    // 1. the candidates, one per column, projected
     candidate_sources_t ps, ds;
     // T(z) - z = reflected - pdhg, since reflected = 2 T(z) - z
     ps.x[0] = state->reflected_primal_solution, ps.y[0] = state->pdhg_primal_solution, ps.beta[0] = -1.0;
@@ -419,23 +374,18 @@ void compute_infeasibility_device(pdhg_solver_state_t *state)
     form_dual_candidates_kernel<<<dim3(state->num_blocks_dual, K), THREADS_PER_BLOCK, 0, state->stream>>>(
         ds, state->constraint_lower_bound, state->constraint_upper_bound, ctx->Y, m);
 
-    // 2. A D and A^T Y in one product each
     spmm(state->sparse_handle, ctx->matA, ctx->dnD, ctx->dnProdM, ctx->buf_A);
     spmm(state->sparse_handle, ctx->matAT, ctx->dnY, ctx->dnProdN, ctx->buf_AT);
 
-    // 3. every scalar that depends on them, including the violations the
-    //    certificate ratios need, so that the second round may overwrite D, Y
-    //    and the products
+    // everything that needs D, Y or the products, before the second round overwrites them
     for (int c = 0; c < K; c++)
     {
         launch_candidate_reductions(state, c);
     }
 }
 
-// Statistics of every candidate in the original space and the objective-side
-// margin test with the relative margin objective_margin, from the fetched
-// first-round scalars. Returns whether any candidate passed the test, in which
-// case the second round is needed.
+// Ray statistics in original units and the objective margin test. Returns
+// whether any candidate passed, that is, whether the second round is needed.
 static bool evaluate_objective_margins(pdhg_solver_state_t *state, double objective_margin)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
@@ -465,10 +415,8 @@ static bool evaluate_objective_margins(pdhg_solver_state_t *state, double object
     return any;
 }
 
-// Second round, kernels only: |A||d| or |A^T||y| and their maxima for each side on
-// which some candidate passed the margin (all candidates of that side at
-// once). D becomes |D| in place and prod_m receives |A||D|; likewise Y and
-// prod_n.
+// Second round, for each side on which some candidate passed the margin: D
+// becomes |D| in place and prod_m becomes |A||D|; likewise on the dual side.
 static void launch_abs_products(pdhg_solver_state_t *state)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
@@ -510,9 +458,8 @@ static void launch_abs_products(pdhg_solver_state_t *state)
     }
 }
 
-// Certificate errors and the best candidate per side. When no candidate of a
-// side passed the margin, that side reports the statistics of candidate 0
-// with an infinite error, so the termination test never accepts it.
+// Keeps the candidate with the smallest certificate error per side. A side with
+// no candidate past the margin reports candidate 0 with an infinite error.
 static void select_best_candidates(pdhg_solver_state_t *state)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
@@ -551,10 +498,8 @@ static void select_best_candidates(pdhg_solver_state_t *state)
     state->dual_ray_certificate_error = best_derr;
 }
 
-// Turns the fetched first-round scalars into the certificate errors and ray
-// statistics of the state. Host arithmetic only, unless some candidate passes
-// its objective margin: then the second round runs here, with one more copy
-// and synchronization.
+// Runs the second round here, with one more synchronization, only when some
+// candidate passes its objective margin.
 void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin)
 {
     if (evaluate_objective_margins(state, objective_margin))

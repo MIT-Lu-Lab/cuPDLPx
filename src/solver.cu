@@ -203,13 +203,8 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         }
         CUDA_CHECK(cudaGraphLaunch(graphExec, state->stream));
 
-        // Termination check. The graph launch returns at once, so the host
-        // queues the kernels of the check (fixed point error, residuals and, if
-        // enabled, the infeasibility candidates) behind it while the GPU is
-        // still iterating; every scalar stays on the device until the one copy
-        // and synchronization of fetch_device_scalars. Only the infeasibility
-        // check may synchronize a second time, inside its host half, when some
-        // candidate passes its objective margin.
+        // Termination check, queued behind the graph while the GPU is still
+        // iterating, then one copy and synchronization.
         compute_fixed_point_error_device(state);
         compute_residual_device(state);
         if (detect_infeasibility)

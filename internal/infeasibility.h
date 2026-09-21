@@ -23,29 +23,18 @@ extern "C"
 {
 #endif
 
-    // Detection of primal and dual infeasibility from candidate rays; see the
-    // comment above compute_infeasibility_device in infeasibility.cu for the
-    // method. Same protocol as termination.h: compute_infeasibility_device
-    // only queues kernels (the candidates, A d, A^T y and their reductions) and
-    // never waits; the caller fetches the scalars; compute_infeasibility_host
-    // turns them into the certificate errors of the state.
-    //
-    // A check has a second round, because |A||d| and |A^T||y| cost two more
-    // SpMMs and are only needed when some candidate passes its objective
-    // margin. compute_infeasibility_host runs it when needed, with one more
-    // copy and synchronization; otherwise it is host arithmetic only.
+    // Same two halves as termination.h. |A||d| and |A^T||y| cost two more SpMMs
+    // and matter only when some candidate passes its objective margin, so the
+    // host half computes them itself, with one more synchronization, only then.
 
-    // The context owns every buffer of a check. It is created once before the
-    // main loop, so that a check never allocates, and destroyed with the solver
-    // state.
+    // Owns every buffer of a check; created before the main loop so that a check
+    // never allocates.
     infeas_ctx_t *infeasibility_context_create(pdhg_solver_state_t *state);
 
     void infeasibility_context_destroy(infeas_ctx_t *ctx);
 
     void compute_infeasibility_device(pdhg_solver_state_t *state);
 
-    // objective_margin is the relative margin the objective term of a ray must
-    // clear (termination_criteria_t::infeasible_objective_margin).
     void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin);
 
 #ifdef __cplusplus

@@ -25,25 +25,16 @@ limitations under the License.
 #include <stdbool.h>
 #include <time.h>
 
-// The scalars a termination check produces on the device, copied to the host
-// in one go; see pdhg_solver_state_t::scalars_h. They are in the rescaled
-// space and the host halves unscale, except the reported ray violations
-// (viol_max_orig below). Name parts: res = residual,
-// sq = sum of squares, max = infinity norm, dot = inner product.
-//
-// Each member is the destination of one reduction (reduce.h).
+// Scalars of a termination check, one reduction each, in the rescaled space
+// except viol_max_orig. Name parts: res = residual, sq = sum of squares,
+// max = infinity norm, dot = inner product.
 
 #define INFEAS_NUM_CANDIDATES 3 // candidate rays of one infeasibility check
 
-// One candidate of the infeasibility check (infeasibility.cu): a primal ray d,
-// which certifies dual infeasibility, and a dual ray y with reduced cost
-// r = -A^T y, which certifies primal infeasibility. All norms are infinity
-// norms.
-//
-// The violation is reduced twice. viol_max_scaled / product_abs_max is the
-// certificate error, with both maxima in the rescaled space, where the rows
-// have comparable scales. viol_max_orig is in original units and is only
-// reported.
+// One infeasibility candidate: a primal ray d, which certifies dual
+// infeasibility, and a dual ray y with reduced cost r = -A^T y, which certifies
+// primal infeasibility. viol_max_scaled / product_abs_max is the certificate
+// error; viol_max_orig is only reported.
 typedef struct
 {
     double max_abs;         // ||d||_inf in the original space; normalizes the reported statistics
@@ -190,11 +181,7 @@ typedef struct
     void *spmv_ctx;
     infeas_ctx_t *infeas_ctx; // detection buffers, created before the main loop when detection is on
 
-    // Scalars of a termination check (optimality, infeasibility) and of the
-    // restart; see device_scalars_t above. They are reduced on the device
-    // (reduce.h) and the whole struct is copied to the host at once
-    // (fetch_device_scalars in termination.cu). Both norms of each residual
-    // are always computed, so that L2 or L-inf stays a host-side choice.
+    // Both norms of each residual are kept so that the norm type is a host-side choice.
     device_scalars_t *scalars_d;
     device_scalars_t *scalars_h; // pinned, so that the copy is asynchronous
     void *reduce_temp_d;         // temporary storage of the reductions

@@ -31,9 +31,7 @@ void reduce_temp_storage_create(pdhg_solver_state_t *state)
     size_t sum_bytes = 0, max_bytes = 0;
     CUDA_CHECK(cub::DeviceReduce::Sum(NULL, sum_bytes, in, out, n_max, state->stream));
     CUDA_CHECK(cub::DeviceReduce::Max(NULL, max_bytes, in, out, n_max, state->stream));
-    // twice the queried size and a margin: the size depends only on the vector
-    // length and the value type, but reduce_check_temp_storage catches a
-    // transform iterator that needs more anyway
+    // headroom over the queried size; reduce_check_temp_storage catches the rest
     state->reduce_temp_bytes = 2 * (sum_bytes > max_bytes ? sum_bytes : max_bytes) + 256;
     CUDA_CHECK(cudaMalloc(&state->reduce_temp_d, state->reduce_temp_bytes));
 }

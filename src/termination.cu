@@ -14,9 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// The termination check: fixed point error, residuals and objective values of
-// the current iterate, and the criteria that decide whether the solver stops.
-// See termination.h for the _device / _host protocol.
+// Termination check: fixed point error, residuals, objective values, and the
+// stopping criteria.
 
 #include "reduce.h"
 #include "termination.h"
@@ -130,8 +129,6 @@ void launch_residual_check(pdhg_solver_state_t *state,
         state->num_constraints,
         state->num_variables);
 
-    // the two norms of each residual (so that the norm type is a host-side
-    // choice), the primal objective c^T x and the two dual objective terms
     device_scalars_t *out = state->scalars_d;
     const int m = state->num_constraints, n = state->num_variables;
     const double *primal_residual = state->primal_residual, *primal_slack = state->primal_slack;
@@ -151,8 +148,6 @@ void launch_residual_check(pdhg_solver_state_t *state,
     reduce_sum(state, n, [=] __host__ __device__(int j) { return dual_slack[j] * x[j]; }, &out->dual_slack_dot);
 }
 
-// Queues the residuals and objective values of the current iterate; the
-// results land in state->scalars_d.
 void compute_residual_device(pdhg_solver_state_t *state)
 {
     cupdlpx_spmv_Ax(state->sparse_handle, state->spmv_ctx, state->pdhg_primal_solution, state->primal_product);

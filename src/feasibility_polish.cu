@@ -159,13 +159,9 @@ static void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state
     }
 }
 
-// Residuals and objective values of a polishing iterate. The same reductions
-// as the main termination check (termination.h) with one synchronization per
-// check; the polish only needs its own side, so the other side's slots hold
-// junk that is never read. The polishing states carry a modified problem, so
-// the vectors the objective values need come from the original state: the
-// primal polish zeroes its objective, the dual polish zeroes its primal
-// iterate and its finite bounds.
+// Residuals and objective values of a polishing iterate; only its own side is
+// read. The objective terms use the original state's vectors, because the
+// primal polish zeroes its objective and the dual polish its iterate and bounds.
 static void
 compute_polish_residual_device(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, bool is_primal_polish)
 {
