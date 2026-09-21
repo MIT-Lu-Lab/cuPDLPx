@@ -42,7 +42,7 @@ _PARAM_ALIAS = {
     "OptimalityTol": "eps_optimal_relative",
     "FeasibilityTol": "eps_feasible_relative",
     "InfeasibleTol": "eps_infeasible_relative",
-    "InfeasibleObjMargin": "infeasible_objective_margin",
+    "InfeasibleRayObjectiveMargin": "infeasible_ray_objective_margin",
     "InfeasibilityDetection": "infeasibility_detection",
     # scaling / step size
     "GeoMeanIters": "geometric_mean_iterations",

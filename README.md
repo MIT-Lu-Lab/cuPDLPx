@@ -118,7 +118,7 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `--sv_tol` | `float` | Tolerance for singular value estimation | `1e-4` |
 | `--no_presolve` | `flag` | Disable presolve | `enabled` |
 | `--eps_infeasible` | `double` | Largest relative constraint residual of an accepted ray certificate, relative to the activity `|A||x|` of the ray on the rescaled problem | `1e-8` |
-| `--infeasible_obj_margin` | `double` | Smallest relative objective margin of an accepted ray certificate (`0`: plain sign test) | `1e-8` |
+| `--infeasible_ray_objective_margin` | `double` | Smallest relative objective margin of an accepted ray certificate (`0`: plain sign test) | `1e-8` |
 | `--no_infeasibility_detection` | `flag` | Disable infeasibility detection | `enabled` |
 | `-f`,`--feasibility_polishing` |`flag` | Run the polishing loop | `false` |
 | `--eps_feas_polish` | `double` | Relative tolerance for polishing | `1e-6`  |

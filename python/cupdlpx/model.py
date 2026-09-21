@@ -55,7 +55,7 @@ _FLOAT_PARAMS = frozenset(
         "eps_optimal_relative",
         "eps_feasible_relative",
         "eps_infeasible_relative",
-        "infeasible_objective_margin",
+        "infeasible_ray_objective_margin",
         "time_sec_limit",
         "pock_chambolle_alpha",
         "artificial_restart_threshold",
@@ -79,9 +79,9 @@ _POSITIVE_FLOAT_PARAMS = frozenset(
     }
 )
 # eps_infeasible_relative = 0 also disables detection, like infeasibility_detection=False
-# infeasible_objective_margin = 0 reduces the objective condition of a certificate to a sign test
+# infeasible_ray_objective_margin = 0 reduces the objective condition of a certificate to a sign test
 _NONNEGATIVE_FLOAT_PARAMS = frozenset(
-    {"time_sec_limit", "matrix_zero_tol", "eps_infeasible_relative", "infeasible_objective_margin"}
+    {"time_sec_limit", "matrix_zero_tol", "eps_infeasible_relative", "infeasible_ray_objective_margin"}
 )
 _STRING_PARAMS = frozenset({"optimality_norm"})
 

@@ -216,7 +216,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         compute_residual_host(state, params->optimality_norm);
         if (detect_infeasibility)
         {
-            compute_infeasibility_host(state, params->termination_criteria.infeasible_objective_margin);
+            compute_infeasibility_host(state, params->termination_criteria.infeasible_ray_objective_margin);
         }
         else
         {

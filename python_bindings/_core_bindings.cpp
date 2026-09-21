@@ -274,7 +274,7 @@ static py::dict get_default_params_py()
     d["eps_optimal_relative"] = p.termination_criteria.eps_optimal_relative;
     d["eps_feasible_relative"] = p.termination_criteria.eps_feasible_relative;
     d["eps_infeasible_relative"] = p.termination_criteria.eps_infeasible_relative;
-    d["infeasible_objective_margin"] = p.termination_criteria.infeasible_objective_margin;
+    d["infeasible_ray_objective_margin"] = p.termination_criteria.infeasible_ray_objective_margin;
 
     // limits
     d["time_sec_limit"] = p.termination_criteria.time_sec_limit;
@@ -388,7 +388,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     getf("eps_optimal_relative", p->termination_criteria.eps_optimal_relative);
     getf("eps_feasible_relative", p->termination_criteria.eps_feasible_relative);
     getf("eps_infeasible_relative", p->termination_criteria.eps_infeasible_relative);
-    getf("infeasible_objective_margin", p->termination_criteria.infeasible_objective_margin);
+    getf("infeasible_ray_objective_margin", p->termination_criteria.infeasible_ray_objective_margin);
 
     // limits
     getf("time_sec_limit", p->termination_criteria.time_sec_limit);
@@ -444,8 +444,8 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     if (p->termination_criteria.eps_infeasible_relative < 0.0)
         throw std::invalid_argument(
             "eps_infeasible_relative must be non-negative (0 disables infeasibility detection).");
-    if (p->termination_criteria.infeasible_objective_margin < 0.0)
-        throw std::invalid_argument("infeasible_objective_margin must be non-negative (0 is a plain sign test).");
+    if (p->termination_criteria.infeasible_ray_objective_margin < 0.0)
+        throw std::invalid_argument("infeasible_ray_objective_margin must be non-negative (0 is a plain sign test).");
     if (p->termination_criteria.eps_feas_polish_relative <= 0.0)
         throw std::invalid_argument("eps_feas_polish_relative must be positive.");
     if (p->sv_tol <= 0.0)

@@ -351,7 +351,7 @@ void infeasibility_context_destroy(infeas_ctx_t *ctx)
 // certifies dual infeasibility and a dual ray y primal infeasibility when
 //   -c^T d   >= delta |c|^T |d|           and  viol(A d)   / max_i (|A||d|)_i   <= eps
 //   Omega(y) >= delta sum |Omega terms|   and  viol(A^T y) / max_j (|A^T||y|)_j <= eps
-// with delta = infeasible_objective_margin and eps = eps_infeasible_relative.
+// with delta = infeasible_ray_objective_margin and eps = eps_infeasible_relative.
 // The ratio is taken in the rescaled space, where rows have comparable scales;
 // in original units a large row can hide a violated one.
 void compute_infeasibility_device(pdhg_solver_state_t *state)

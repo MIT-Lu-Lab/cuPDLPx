@@ -216,8 +216,8 @@ void print_usage(const char *prog_name)
             "                                      constraint residual of an accepted ray "
             "certificate (default: 1e-8; 0 also disables detection).\n");
     fprintf(stderr,
-            "      --infeasible_obj_margin <margin> Relative margin the objective term of a ray "
-            "must clear\n"
+            "      --infeasible_ray_objective_margin <margin>\n"
+            "                                      Relative margin the objective term of a ray must clear\n"
             "                                      to count as a certificate (default: 1e-8; 0 is a "
             "plain sign test).\n");
     fprintf(stderr,
@@ -251,7 +251,7 @@ int main(int argc, char *argv[])
                                            {"eps_feas", required_argument, 0, 1004},
                                            {"eps_feas_polish", required_argument, 0, 1006},
                                            {"eps_infeasible", required_argument, 0, 1019},
-                                           {"infeasible_obj_margin", required_argument, 0, 1021},
+                                           {"infeasible_ray_objective_margin", required_argument, 0, 1021},
                                            {"feasibility_polishing", no_argument, 0, 'f'},
                                            {"geo_mean_iter", required_argument, 0, 1018},
                                            {"l_inf_ruiz_iter", required_argument, 0, 1007},
@@ -300,8 +300,8 @@ int main(int argc, char *argv[])
             case 1019: // --eps_infeasible
                 params.termination_criteria.eps_infeasible_relative = atof(optarg);
                 break;
-            case 1021: // --infeasible_obj_margin
-                params.termination_criteria.infeasible_objective_margin = atof(optarg);
+            case 1021: // --infeasible_ray_objective_margin
+                params.termination_criteria.infeasible_ray_objective_margin = atof(optarg);
                 break;
             case 'f': // --feasibility_polishing
                 params.feasibility_polishing = true;
