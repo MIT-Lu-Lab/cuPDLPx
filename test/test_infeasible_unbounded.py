@@ -101,3 +101,18 @@ def test_infeasibility_detection_flag_disables_detection(base_lp_data):
     model.setParams(OutputFlag=False, Presolve=False, InfeasibilityDetection=False, IterationLimit=2000)
     model.optimize()
     assert model.Status == PDLP.ITERATION_LIMIT, f"Unexpected termination status: {model.Status}"
+
+def test_infeasible_objective_margin_blocks_detection(base_lp_data):
+    """
+    InfeasibleObjMargin is the relative margin the objective term of a ray must
+    clear. A margin above 1 can never be met, because the objective term is at
+    most the sum of the absolute values of its terms, so the infeasible LP of
+    test_infeasible_lp runs into its iteration limit instead.
+    """
+    c, A, l, u, lb, ub = base_lp_data
+    l, u = l.copy(), u.copy()
+    l[0], u[0] = 10, 10
+    model = Model(c, A, l, u, lb, ub)
+    model.setParams(OutputFlag=False, Presolve=False, InfeasibleObjMargin=2.0, IterationLimit=2000)
+    model.optimize()
+    assert model.Status == PDLP.ITERATION_LIMIT, f"Unexpected termination status: {model.Status}"

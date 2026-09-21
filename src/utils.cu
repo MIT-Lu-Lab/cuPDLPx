@@ -277,6 +277,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->termination_criteria.iteration_limit = INT32_MAX;
     params->termination_criteria.eps_feas_polish_relative = 1e-6;
     params->termination_criteria.eps_infeasible_relative = 1e-8;
+    params->termination_criteria.infeasible_objective_margin = 1e-8;
 
     params->restart_params.artificial_restart_threshold = 0.36;
     params->restart_params.sufficient_reduction_for_restart = 0.2;
@@ -588,6 +589,9 @@ void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *pro
     PRINT_DIFF_DBL("eps_infeasible_relative",
                    params->termination_criteria.eps_infeasible_relative,
                    default_params.termination_criteria.eps_infeasible_relative);
+    PRINT_DIFF_DBL("infeasible_objective_margin",
+                   params->termination_criteria.infeasible_objective_margin,
+                   default_params.termination_criteria.infeasible_objective_margin);
     PRINT_DIFF_BOOL("presolve", params->presolve, default_params.presolve);
     PRINT_DIFF_BOOL("infeasibility_detection", params->infeasibility_detection, default_params.infeasibility_detection);
     PRINT_DIFF_DBL("matrix_zero_tol", params->matrix_zero_tol, default_params.matrix_zero_tol);

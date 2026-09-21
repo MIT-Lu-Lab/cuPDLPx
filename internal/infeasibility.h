@@ -44,7 +44,9 @@ extern "C"
 
     void compute_infeasibility_device(pdhg_solver_state_t *state);
 
-    void compute_infeasibility_host(pdhg_solver_state_t *state);
+    // objective_margin is the relative margin the objective term of a ray must
+    // clear (termination_criteria_t::infeasible_objective_margin).
+    void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin);
 
 #ifdef __cplusplus
 }

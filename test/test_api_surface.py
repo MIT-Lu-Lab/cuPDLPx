@@ -244,6 +244,8 @@ def test_param_value_validation(base_lp_data):
     with pytest.raises(ValueError):
         model.setParam("TimeLimit", -1.0)
     with pytest.raises(ValueError):
+        model.setParam("InfeasibleObjMargin", -1e-8)
+    with pytest.raises(ValueError):
         model.setParam("OptimalityNorm", "l1")
 
 
@@ -259,6 +261,8 @@ def test_direct_core_param_value_validation(base_lp_data):
         solve_once(A, c, None, lb, ub, l, u, params={"time_sec_limit": float("nan")})
     with pytest.raises(ValueError):
         solve_once(A, c, None, lb, ub, l, u, params={"optimality_norm": "l1"})
+    with pytest.raises(ValueError):
+        solve_once(A, c, None, lb, ub, l, u, params={"infeasible_objective_margin": -1.0})
 
 
 def test_direct_core_model_data_validation(base_lp_data):

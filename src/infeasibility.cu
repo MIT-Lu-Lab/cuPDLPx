@@ -382,12 +382,6 @@ void infeasibility_context_destroy(infeas_ctx_t *ctx)
     free(ctx);
 }
 
-// Threshold on the objective-side margin of a certificate (t3 below). It only
-// has to clear rounding noise and is deliberately independent of
-// eps_infeasible, so that loosening the tolerance can only make detection
-// easier.
-#define INFEAS_OBJECTIVE_MARGIN 1e-8
-
 // On an infeasible problem the PDHG iterates diverge along the infimal
 // displacement vector v, whose primal or dual part is an infeasibility
 // certificate (Applegate et al. 2021; Lu and Yang 2024 for Halpern PDHG). Three
@@ -404,9 +398,12 @@ void infeasibility_context_destroy(infeas_ctx_t *ctx)
 // normalized by its infinity norm in the original space; its primal part d is
 // a certificate of dual infeasibility and its dual part y one of primal
 // infeasibility when
-//   the objective term has the right sign with a relative margin,
-//     -c^T d >= INFEAS_OBJECTIVE_MARGIN |c|^T |d|          (t3, primal side)
-//     Omega(y) >= INFEAS_OBJECTIVE_MARGIN sum |terms|       (t3, dual side)
+//   the objective term has the right sign with a relative margin delta (the
+//   parameter infeasible_objective_margin; it only has to clear rounding noise
+//   and is deliberately separate from eps_infeasible, so that loosening the
+//   tolerance can only make detection easier),
+//     -c^T d >= delta |c|^T |d|                            (t3, primal side)
+//     Omega(y) >= delta sum |terms|                        (t3, dual side)
 //   and the violation of the homogeneous constraints, relative to the
 //   activity the ray produces, is at most eps_infeasible:
 //     viol(A d) / max_i (|A||d|)_i <= eps                   (t2, primal side)
@@ -457,9 +454,10 @@ void compute_infeasibility_device(pdhg_solver_state_t *state)
 }
 
 // Statistics of every candidate in the original space and the objective-side
-// margin test, from the fetched first-round scalars. Returns whether any
-// candidate passed the test, in which case the second round is needed.
-static bool evaluate_objective_margins(pdhg_solver_state_t *state)
+// margin test with the relative margin objective_margin, from the fetched
+// first-round scalars. Returns whether any candidate passed the test, in which
+// case the second round is needed.
+static bool evaluate_objective_margins(pdhg_solver_state_t *state, double objective_margin)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
     const double bc = state->constraint_bound_rescaling, oc = state->objective_vector_rescaling;
@@ -480,9 +478,9 @@ static bool evaluate_objective_margins(pdhg_solver_state_t *state)
             : 0.0;
         s->max_dual_ray_infeasibility = dual_norm > 0.0 ? v->dual_ray.viol_max_orig / oc / dual_norm : 0.0;
         ctx->need_primal[c] = s->primal_ray_linear_objective < 0.0 && s->primal_objective_abs > 0.0 &&
-            -s->primal_ray_linear_objective >= INFEAS_OBJECTIVE_MARGIN * s->primal_objective_abs;
+            -s->primal_ray_linear_objective >= objective_margin * s->primal_objective_abs;
         ctx->need_dual[c] = s->dual_ray_objective > 0.0 && s->dual_objective_abs > 0.0 &&
-            s->dual_ray_objective >= INFEAS_OBJECTIVE_MARGIN * s->dual_objective_abs;
+            s->dual_ray_objective >= objective_margin * s->dual_objective_abs;
         any = any || ctx->need_primal[c] || ctx->need_dual[c];
     }
     return any;
@@ -578,9 +576,9 @@ static void select_best_candidates(pdhg_solver_state_t *state)
 // statistics of the state. Host arithmetic only, unless some candidate passes
 // its objective margin: then the second round runs here, with one more copy
 // and synchronization.
-void compute_infeasibility_host(pdhg_solver_state_t *state)
+void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin)
 {
-    if (evaluate_objective_margins(state))
+    if (evaluate_objective_margins(state, objective_margin))
     {
         launch_abs_products(state);
         fetch_device_scalars(state);
