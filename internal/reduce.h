@@ -26,6 +26,9 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 
+// The element function of a reduction: DEVICE_FN(i) { return ...; }
+#define DEVICE_FN(i) [=] __host__ __device__(int i)
+
 // Temporary storage of cub::DeviceReduce, sized once for the longest vector and
 // shared by every call. cub rejects a call that needs more.
 void reduce_temp_storage_create(pdhg_solver_state_t *state);

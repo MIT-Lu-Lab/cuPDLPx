@@ -26,7 +26,8 @@ limitations under the License.
 static const double HOST_ONE = 1.0;
 static const double HOST_ZERO = 0.0;
 
-// Statistics of one candidate ray, in the original problem space.
+// Statistics of one candidate ray in original units, and whether each side
+// passed its objective margin. Lives for one compute_infeasibility_host call.
 typedef struct
 {
     double max_primal_ray_infeasibility;
@@ -36,9 +37,12 @@ typedef struct
     // the objective terms with absolute values; the margin is measured against them
     double primal_objective_abs;
     double dual_objective_abs;
+    bool primal_passes_margin;
+    bool dual_passes_margin;
 } ray_candidate_stats_t;
 
-__global__ void abs_kernel(double *__restrict__ out, const double *__restrict__ x, int n)
+// out[i] = |x[i]|; out may be x.
+__global__ void abs_kernel(double *out, const double *x, int n)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
@@ -60,23 +64,24 @@ struct infeas_ctx
     double *prod_n; // n x K: A^T Y, then |A^T||Y|
     cusparseDnMatDescr_t dnD, dnY, dnProdM, dnProdN;
     void *buf_A, *buf_AT, *buf_absA, *buf_absAT;
-    // from the margin test, read when the best candidate is selected
-    ray_candidate_stats_t stats[INFEAS_NUM_CANDIDATES];
-    bool need_primal[INFEAS_NUM_CANDIDATES];
-    bool need_dual[INFEAS_NUM_CANDIDATES];
 };
 
-// Candidate c is x[c] + beta[c] * y[c], or x[c] alone when y[c] is NULL.
+// The direction to - from; from == NULL means to itself.
 typedef struct
 {
-    const double *x[INFEAS_NUM_CANDIDATES];
-    const double *y[INFEAS_NUM_CANDIDATES];
-    double beta[INFEAS_NUM_CANDIDATES];
-} candidate_sources_t;
+    const double *to;
+    const double *from;
+} direction_t;
 
-__device__ __forceinline__ double candidate_entry(const candidate_sources_t &src, int c, int i)
+// Wrapped in a struct so that the array is passed to a kernel by value.
+typedef struct
 {
-    return src.y[c] ? src.x[c][i] + src.beta[c] * src.y[c][i] : src.x[c][i];
+    direction_t candidate[INFEAS_NUM_CANDIDATES];
+} candidate_directions_t;
+
+__device__ __forceinline__ double direction_entry(const direction_t &d, int i)
+{
+    return d.from ? d.to[i] - d.from[i] : d.to[i];
 }
 
 // Sign conditions of a primal ray: (A d)_i >= 0 under a finite lower bound and
@@ -93,20 +98,21 @@ __host__ __device__ __forceinline__ double dual_ray_reduced_cost_violation(doubl
     return (lb_finite ? 0.0 : fmax(r, 0.0)) + (ub_finite ? 0.0 : fmax(-r, 0.0));
 }
 
-// Dual objective terms of an entry v (y_i or r_j): v^+ times the finite lower
-// bound and v^- times the finite upper bound.
-__host__ __device__ __forceinline__ double lower_bound_term(double v, double lower_bound_finite)
+// Dual objective term of an entry v (y_i or r_j): v^+ times the finite lower
+// bound plus v^- times the finite upper bound.
+__host__ __device__ __forceinline__ double bound_term(double v, double lower_finite, double upper_finite)
 {
-    return fmax(v, 0.0) * lower_bound_finite;
+    return fmax(v, 0.0) * lower_finite + fmin(v, 0.0) * upper_finite;
 }
 
-__host__ __device__ __forceinline__ double upper_bound_term(double v, double upper_bound_finite)
+// The same with each summand in absolute value.
+__host__ __device__ __forceinline__ double bound_term_abs(double v, double lower_finite, double upper_finite)
 {
-    return fmin(v, 0.0) * upper_bound_finite;
+    return fabs(fmax(v, 0.0) * lower_finite) + fabs(fmin(v, 0.0) * upper_finite);
 }
 
 // Forms candidate blockIdx.y and projects it onto the sign conditions.
-__global__ void form_primal_candidates_kernel(candidate_sources_t src,
+__global__ void form_primal_candidates_kernel(candidate_directions_t directions,
                                               const double *__restrict__ var_lb,
                                               const double *__restrict__ var_ub,
                                               double *__restrict__ D,
@@ -116,7 +122,7 @@ __global__ void form_primal_candidates_kernel(candidate_sources_t src,
     int c = blockIdx.y;
     if (j >= n)
         return;
-    double v = candidate_entry(src, c, j);
+    double v = direction_entry(directions.candidate[c], j);
     if (isfinite(var_lb[j]))
         v = fmax(v, 0.0);
     if (isfinite(var_ub[j]))
@@ -124,7 +130,7 @@ __global__ void form_primal_candidates_kernel(candidate_sources_t src,
     D[(size_t)c * n + j] = v;
 }
 
-__global__ void form_dual_candidates_kernel(candidate_sources_t src,
+__global__ void form_dual_candidates_kernel(candidate_directions_t directions,
                                             const double *__restrict__ con_lb,
                                             const double *__restrict__ con_ub,
                                             double *__restrict__ Y,
@@ -134,19 +140,12 @@ __global__ void form_dual_candidates_kernel(candidate_sources_t src,
     int c = blockIdx.y;
     if (i >= m)
         return;
-    double v = candidate_entry(src, c, i);
+    double v = direction_entry(directions.candidate[c], i);
     if (!isfinite(con_lb[i]))
         v = fmin(v, 0.0);
     if (!isfinite(con_ub[i]))
         v = fmax(v, 0.0);
     Y[(size_t)c * m + i] = v;
-}
-
-__global__ void abs_columns_kernel(double *__restrict__ X, int rows)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < rows)
-        X[(size_t)blockIdx.y * rows + i] = fabs(X[(size_t)blockIdx.y * rows + i]);
 }
 
 // First-round scalars of candidate c. Violations are reduced in the rescaled
@@ -173,67 +172,40 @@ static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
     const double *constraint_upper_finite = state->constraint_upper_bound_finite_val;
 
     // primal ray d
-    auto row_violation = [=] __host__ __device__(int i)
+    auto d_abs_orig = DEVICE_FN(j) { return fabs(d[j]) / (variable_rescaling[j] * bound_rescaling); };
+    auto objective_term = DEVICE_FN(j) { return objective[j] * d[j]; };
+    auto objective_term_abs = DEVICE_FN(j) { return fabs(objective[j] * d[j]); };
+    auto row_violation = DEVICE_FN(i)
     { return primal_ray_row_violation(Ad[i], isfinite(constraint_lower[i]), isfinite(constraint_upper[i])); };
-    reduce_max(
-        state,
-        n,
-        [=] __host__ __device__(int j) { return fabs(d[j]) / (variable_rescaling[j] * bound_rescaling); },
-        &out->primal_ray.max_abs);
-    reduce_sum(state, n, [=] __host__ __device__(int j) { return objective[j] * d[j]; }, &out->primal_ray.obj);
-    reduce_sum(
-        state, n, [=] __host__ __device__(int j) { return fabs(objective[j] * d[j]); }, &out->primal_ray.obj_abs);
+    auto row_violation_orig = DEVICE_FN(i) { return row_violation(i) * constraint_rescaling[i]; };
+
+    reduce_max(state, n, d_abs_orig, &out->primal_ray.max_abs);
+    reduce_sum(state, n, objective_term, &out->primal_ray.obj);
+    reduce_sum(state, n, objective_term_abs, &out->primal_ray.obj_abs);
     reduce_max(state, m, row_violation, &out->primal_ray.viol_max_scaled);
-    reduce_max(
-        state,
-        m,
-        [=] __host__ __device__(int i) { return row_violation(i) * constraint_rescaling[i]; },
-        &out->primal_ray.viol_max_orig);
+    reduce_max(state, m, row_violation_orig, &out->primal_ray.viol_max_orig);
 
     // dual ray y and its reduced cost r = -A^T y
-    auto reduced_cost = [=] __host__ __device__(int j) { return -ATy[j]; };
-    auto y_lower_term = [=] __host__ __device__(int i) { return lower_bound_term(y[i], constraint_lower_finite[i]); };
-    auto y_upper_term = [=] __host__ __device__(int i) { return upper_bound_term(y[i], constraint_upper_finite[i]); };
-    auto r_lower_term = [=] __host__ __device__(int j)
-    { return lower_bound_term(reduced_cost(j), variable_lower_finite[j]); };
-    auto r_upper_term = [=] __host__ __device__(int j)
-    { return upper_bound_term(reduced_cost(j), variable_upper_finite[j]); };
-    auto reduced_cost_violation = [=] __host__ __device__(int j)
-    {
-        return dual_ray_reduced_cost_violation(
-            reduced_cost(j), isfinite(variable_lower[j]), isfinite(variable_upper[j]));
-    };
-    reduce_max(
-        state,
-        m,
-        [=] __host__ __device__(int i) { return fabs(y[i]) / (constraint_rescaling[i] * objective_rescaling); },
-        &out->dual_ray.max_abs);
-    reduce_sum(
-        state,
-        m,
-        [=] __host__ __device__(int i) { return y_lower_term(i) + y_upper_term(i); },
-        &out->dual_ray.obj_con_bounds);
-    reduce_sum(
-        state,
-        n,
-        [=] __host__ __device__(int j) { return r_lower_term(j) + r_upper_term(j); },
-        &out->dual_ray.obj_var_bounds);
-    reduce_sum(
-        state,
-        m,
-        [=] __host__ __device__(int i) { return fabs(y_lower_term(i)) + fabs(y_upper_term(i)); },
-        &out->dual_ray.obj_con_bounds_abs);
-    reduce_sum(
-        state,
-        n,
-        [=] __host__ __device__(int j) { return fabs(r_lower_term(j)) + fabs(r_upper_term(j)); },
-        &out->dual_ray.obj_var_bounds_abs);
+    auto y_abs_orig = DEVICE_FN(i) { return fabs(y[i]) / (constraint_rescaling[i] * objective_rescaling); };
+    auto con_bounds_term = DEVICE_FN(i)
+    { return bound_term(y[i], constraint_lower_finite[i], constraint_upper_finite[i]); };
+    auto con_bounds_term_abs = DEVICE_FN(i)
+    { return bound_term_abs(y[i], constraint_lower_finite[i], constraint_upper_finite[i]); };
+    auto var_bounds_term =
+        DEVICE_FN(j) { return bound_term(-ATy[j], variable_lower_finite[j], variable_upper_finite[j]); };
+    auto var_bounds_term_abs = DEVICE_FN(j)
+    { return bound_term_abs(-ATy[j], variable_lower_finite[j], variable_upper_finite[j]); };
+    auto reduced_cost_violation = DEVICE_FN(j)
+    { return dual_ray_reduced_cost_violation(-ATy[j], isfinite(variable_lower[j]), isfinite(variable_upper[j])); };
+    auto reduced_cost_violation_orig = DEVICE_FN(j) { return reduced_cost_violation(j) * variable_rescaling[j]; };
+
+    reduce_max(state, m, y_abs_orig, &out->dual_ray.max_abs);
+    reduce_sum(state, m, con_bounds_term, &out->dual_ray.obj_con_bounds);
+    reduce_sum(state, n, var_bounds_term, &out->dual_ray.obj_var_bounds);
+    reduce_sum(state, m, con_bounds_term_abs, &out->dual_ray.obj_con_bounds_abs);
+    reduce_sum(state, n, var_bounds_term_abs, &out->dual_ray.obj_var_bounds_abs);
     reduce_max(state, n, reduced_cost_violation, &out->dual_ray.viol_max_scaled);
-    reduce_max(
-        state,
-        n,
-        [=] __host__ __device__(int j) { return reduced_cost_violation(j) * variable_rescaling[j]; },
-        &out->dual_ray.viol_max_orig);
+    reduce_max(state, n, reduced_cost_violation_orig, &out->dual_ray.viol_max_orig);
 }
 
 static void spmm_buffer(
@@ -270,10 +242,38 @@ spmm(cusparseHandle_t handle, cusparseSpMatDescr_t mat, cusparseDnMatDescr_t in,
                                 buffer));
 }
 
+// A CSR descriptor on the indices of M with the given values.
+static cusparseSpMatDescr_t create_csr_descr(const cu_sparse_matrix_csr_t *M, double *values)
+{
+    cusparseSpMatDescr_t descr;
+    CUSPARSE_CHECK(cusparseCreateCsr(&descr,
+                                     M->num_rows,
+                                     M->num_cols,
+                                     M->num_nonzeros,
+                                     M->row_ptr,
+                                     M->col_ind,
+                                     values,
+                                     CUSPARSE_INDEX_32I,
+                                     CUSPARSE_INDEX_32I,
+                                     CUSPARSE_INDEX_BASE_ZERO,
+                                     CUDA_R_64F));
+    return descr;
+}
+
+// Allocates a column-major rows x K matrix and creates its descriptor.
+static double *create_dense(int rows, cusparseDnMatDescr_t *descr)
+{
+    const int K = INFEAS_NUM_CANDIDATES;
+    double *values = NULL;
+    CUDA_CHECK(cudaMalloc(&values, (size_t)rows * K * sizeof(double)));
+    CUSPARSE_CHECK(cusparseCreateDnMat(descr, rows, K, rows, values, CUDA_R_64F, CUSPARSE_ORDER_COL));
+    return values;
+}
+
 infeas_ctx_t *infeasibility_context_create(pdhg_solver_state_t *state)
 {
     infeas_ctx_t *ctx = (infeas_ctx_t *)safe_calloc(1, sizeof(infeas_ctx_t));
-    const int n = state->num_variables, m = state->num_constraints, K = INFEAS_NUM_CANDIDATES;
+    const int n = state->num_variables, m = state->num_constraints;
     const cu_sparse_matrix_csr_t *A = state->constraint_matrix, *AT = state->constraint_matrix_t;
     const int nnz = A->num_nonzeros;
 
@@ -282,32 +282,15 @@ infeas_ctx_t *infeasibility_context_create(pdhg_solver_state_t *state)
     abs_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK, 0, state->stream>>>(ctx->abs_val_A, A->val, nnz);
     abs_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK, 0, state->stream>>>(ctx->abs_val_AT, AT->val, nnz);
 
-#define CREATE_CSR(descr, M, vals)                                                                                     \
-    CUSPARSE_CHECK(cusparseCreateCsr(&(descr),                                                                         \
-                                     (M)->num_rows,                                                                    \
-                                     (M)->num_cols,                                                                    \
-                                     (M)->num_nonzeros,                                                                \
-                                     (M)->row_ptr,                                                                     \
-                                     (M)->col_ind,                                                                     \
-                                     (vals),                                                                           \
-                                     CUSPARSE_INDEX_32I,                                                               \
-                                     CUSPARSE_INDEX_32I,                                                               \
-                                     CUSPARSE_INDEX_BASE_ZERO,                                                         \
-                                     CUDA_R_64F))
-    CREATE_CSR(ctx->matA, A, A->val);
-    CREATE_CSR(ctx->matAT, AT, AT->val);
-    CREATE_CSR(ctx->matAbsA, A, ctx->abs_val_A);
-    CREATE_CSR(ctx->matAbsAT, AT, ctx->abs_val_AT);
-#undef CREATE_CSR
+    ctx->matA = create_csr_descr(A, A->val);
+    ctx->matAT = create_csr_descr(AT, AT->val);
+    ctx->matAbsA = create_csr_descr(A, ctx->abs_val_A);
+    ctx->matAbsAT = create_csr_descr(AT, ctx->abs_val_AT);
 
-#define CREATE_DN(ptr, descr, rows)                                                                                    \
-    CUDA_CHECK(cudaMalloc(&(ptr), (size_t)(rows) * K * sizeof(double)));                                               \
-    CUSPARSE_CHECK(cusparseCreateDnMat(&(descr), (rows), K, (rows), (ptr), CUDA_R_64F, CUSPARSE_ORDER_COL))
-    CREATE_DN(ctx->D, ctx->dnD, n);
-    CREATE_DN(ctx->prod_n, ctx->dnProdN, n);
-    CREATE_DN(ctx->Y, ctx->dnY, m);
-    CREATE_DN(ctx->prod_m, ctx->dnProdM, m);
-#undef CREATE_DN
+    ctx->D = create_dense(n, &ctx->dnD);
+    ctx->prod_n = create_dense(n, &ctx->dnProdN);
+    ctx->Y = create_dense(m, &ctx->dnY);
+    ctx->prod_m = create_dense(m, &ctx->dnProdM);
 
     spmm_buffer(state->sparse_handle, ctx->matA, ctx->dnD, ctx->dnProdM, &ctx->buf_A);
     spmm_buffer(state->sparse_handle, ctx->matAT, ctx->dnY, ctx->dnProdN, &ctx->buf_AT);
@@ -359,20 +342,21 @@ void compute_infeasibility_device(pdhg_solver_state_t *state)
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints, K = INFEAS_NUM_CANDIDATES;
 
-    candidate_sources_t ps, ds;
-    // T(z) - z = reflected - pdhg, since reflected = 2 T(z) - z
-    ps.x[0] = state->reflected_primal_solution, ps.y[0] = state->pdhg_primal_solution, ps.beta[0] = -1.0;
-    ds.x[0] = state->reflected_dual_solution, ds.y[0] = state->pdhg_dual_solution, ds.beta[0] = -1.0;
-    // T(z)
-    ps.x[1] = state->pdhg_primal_solution, ps.y[1] = NULL, ps.beta[1] = 0.0;
-    ds.x[1] = state->pdhg_dual_solution, ds.y[1] = NULL, ds.beta[1] = 0.0;
-    // T(z) - z^0
-    ps.x[2] = state->pdhg_primal_solution, ps.y[2] = state->initial_primal_solution, ps.beta[2] = -1.0;
-    ds.x[2] = state->pdhg_dual_solution, ds.y[2] = state->initial_dual_solution, ds.beta[2] = -1.0;
+    // reflected = 2 T(z) - z, so reflected - pdhg = T(z) - z
+    const candidate_directions_t primal = {{
+        {state->reflected_primal_solution, state->pdhg_primal_solution}, // T(z) - z
+        {state->pdhg_primal_solution, NULL},                             // T(z)
+        {state->pdhg_primal_solution, state->initial_primal_solution},   // T(z) - z^0
+    }};
+    const candidate_directions_t dual = {{
+        {state->reflected_dual_solution, state->pdhg_dual_solution},
+        {state->pdhg_dual_solution, NULL},
+        {state->pdhg_dual_solution, state->initial_dual_solution},
+    }};
     form_primal_candidates_kernel<<<dim3(state->num_blocks_primal, K), THREADS_PER_BLOCK, 0, state->stream>>>(
-        ps, state->variable_lower_bound, state->variable_upper_bound, ctx->D, n);
+        primal, state->variable_lower_bound, state->variable_upper_bound, ctx->D, n);
     form_dual_candidates_kernel<<<dim3(state->num_blocks_dual, K), THREADS_PER_BLOCK, 0, state->stream>>>(
-        ds, state->constraint_lower_bound, state->constraint_upper_bound, ctx->Y, m);
+        dual, state->constraint_lower_bound, state->constraint_upper_bound, ctx->Y, m);
 
     spmm(state->sparse_handle, ctx->matA, ctx->dnD, ctx->dnProdM, ctx->buf_A);
     spmm(state->sparse_handle, ctx->matAT, ctx->dnY, ctx->dnProdN, ctx->buf_AT);
@@ -384,128 +368,130 @@ void compute_infeasibility_device(pdhg_solver_state_t *state)
     }
 }
 
-// Ray statistics in original units and the objective margin test. Returns
-// whether any candidate passed, that is, whether the second round is needed.
-static bool evaluate_objective_margins(pdhg_solver_state_t *state, double objective_margin)
+// a / b, or 0 when b is 0: a ray of zero norm has no statistics.
+static double divide_or_zero(double a, double b)
 {
-    infeas_ctx_t *ctx = state->infeas_ctx;
-    const double bc = state->constraint_bound_rescaling, oc = state->objective_vector_rescaling;
-
-    bool any = false;
-    for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
-    {
-        const infeas_candidate_scalars_t *v = &state->scalars_h->infeas[c];
-        ray_candidate_stats_t *s = &ctx->stats[c];
-        double primal_norm = v->primal_ray.max_abs, dual_norm = v->dual_ray.max_abs;
-        s->primal_ray_linear_objective = primal_norm > 0.0 ? v->primal_ray.obj / (bc * oc) / primal_norm : 0.0;
-        s->primal_objective_abs = primal_norm > 0.0 ? v->primal_ray.obj_abs / (bc * oc) / primal_norm : 0.0;
-        s->max_primal_ray_infeasibility = primal_norm > 0.0 ? v->primal_ray.viol_max_orig / bc / primal_norm : 0.0;
-        s->dual_ray_objective =
-            dual_norm > 0.0 ? (v->dual_ray.obj_con_bounds + v->dual_ray.obj_var_bounds) / (bc * oc) / dual_norm : 0.0;
-        s->dual_objective_abs = dual_norm > 0.0
-            ? (v->dual_ray.obj_con_bounds_abs + v->dual_ray.obj_var_bounds_abs) / (bc * oc) / dual_norm
-            : 0.0;
-        s->max_dual_ray_infeasibility = dual_norm > 0.0 ? v->dual_ray.viol_max_orig / oc / dual_norm : 0.0;
-        ctx->need_primal[c] = s->primal_ray_linear_objective < 0.0 && s->primal_objective_abs > 0.0 &&
-            -s->primal_ray_linear_objective >= objective_margin * s->primal_objective_abs;
-        ctx->need_dual[c] = s->dual_ray_objective > 0.0 && s->dual_objective_abs > 0.0 &&
-            s->dual_ray_objective >= objective_margin * s->dual_objective_abs;
-        any = any || ctx->need_primal[c] || ctx->need_dual[c];
-    }
-    return any;
+    return b > 0.0 ? a / b : 0.0;
 }
 
-// Second round, for each side on which some candidate passed the margin: D
-// becomes |D| in place and prod_m becomes |A||D|; likewise on the dual side.
-static void launch_abs_products(pdhg_solver_state_t *state)
+// violation / product_abs_max. A zero product certifies only a zero violation.
+static double certificate_error(double violation, double product_abs_max)
+{
+    if (product_abs_max > 0.0)
+        return violation / product_abs_max;
+    return violation > 0.0 ? INFINITY : 0.0;
+}
+
+// Ray statistics in original units and the objective margin test of every candidate.
+static void
+evaluate_objective_margins(const pdhg_solver_state_t *state, double objective_margin, ray_candidate_stats_t *stats)
+{
+    const double bound_rescaling = state->constraint_bound_rescaling;
+    const double objective_rescaling = state->objective_vector_rescaling;
+    const double objective_scale = bound_rescaling * objective_rescaling;
+
+    for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
+    {
+        const primal_ray_scalars_t *primal = &state->scalars_h->infeas[c].primal_ray;
+        const dual_ray_scalars_t *dual = &state->scalars_h->infeas[c].dual_ray;
+        ray_candidate_stats_t *out = &stats[c];
+
+        out->primal_ray_linear_objective = divide_or_zero(primal->obj / objective_scale, primal->max_abs);
+        out->primal_objective_abs = divide_or_zero(primal->obj_abs / objective_scale, primal->max_abs);
+        out->max_primal_ray_infeasibility = divide_or_zero(primal->viol_max_orig / bound_rescaling, primal->max_abs);
+        out->dual_ray_objective =
+            divide_or_zero((dual->obj_con_bounds + dual->obj_var_bounds) / objective_scale, dual->max_abs);
+        out->dual_objective_abs =
+            divide_or_zero((dual->obj_con_bounds_abs + dual->obj_var_bounds_abs) / objective_scale, dual->max_abs);
+        out->max_dual_ray_infeasibility = divide_or_zero(dual->viol_max_orig / objective_rescaling, dual->max_abs);
+
+        out->primal_passes_margin = out->primal_ray_linear_objective < 0.0 && out->primal_objective_abs > 0.0 &&
+            -out->primal_ray_linear_objective >= objective_margin * out->primal_objective_abs;
+        out->dual_passes_margin = out->dual_ray_objective > 0.0 && out->dual_objective_abs > 0.0 &&
+            out->dual_ray_objective >= objective_margin * out->dual_objective_abs;
+    }
+}
+
+// Second round for the sides that need it: D becomes |D| in place and prod_m
+// becomes |A||D|; likewise on the dual side.
+static void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual_side)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints, K = INFEAS_NUM_CANDIDATES;
 
-    bool any_primal = false, any_dual = false;
-    for (int c = 0; c < K; c++)
+    if (primal_side)
     {
-        any_primal = any_primal || ctx->need_primal[c];
-        any_dual = any_dual || ctx->need_dual[c];
-    }
-    if (any_primal)
-    {
-        abs_columns_kernel<<<dim3(state->num_blocks_primal, K), THREADS_PER_BLOCK, 0, state->stream>>>(ctx->D, n);
+        abs_kernel<<<state->num_blocks_primal * K, THREADS_PER_BLOCK, 0, state->stream>>>(ctx->D, ctx->D, n * K);
         spmm(state->sparse_handle, ctx->matAbsA, ctx->dnD, ctx->dnProdM, ctx->buf_absA);
         for (int c = 0; c < K; c++)
         {
             const double *p = ctx->prod_m + (size_t)c * m;
-            reduce_max(
-                state,
-                m,
-                [=] __host__ __device__(int i) { return p[i]; },
-                &state->scalars_d->infeas[c].primal_ray.product_abs_max);
+            reduce_max(state, m, DEVICE_FN(i) { return p[i]; }, &state->scalars_d->infeas[c].primal_ray.product_abs_max);
         }
     }
-    if (any_dual)
+    if (dual_side)
     {
-        abs_columns_kernel<<<dim3(state->num_blocks_dual, K), THREADS_PER_BLOCK, 0, state->stream>>>(ctx->Y, m);
+        abs_kernel<<<state->num_blocks_dual * K, THREADS_PER_BLOCK, 0, state->stream>>>(ctx->Y, ctx->Y, m * K);
         spmm(state->sparse_handle, ctx->matAbsAT, ctx->dnY, ctx->dnProdN, ctx->buf_absAT);
         for (int c = 0; c < K; c++)
         {
             const double *p = ctx->prod_n + (size_t)c * n;
-            reduce_max(
-                state,
-                n,
-                [=] __host__ __device__(int j) { return p[j]; },
-                &state->scalars_d->infeas[c].dual_ray.product_abs_max);
+            reduce_max(state, n, DEVICE_FN(j) { return p[j]; }, &state->scalars_d->infeas[c].dual_ray.product_abs_max);
         }
     }
 }
 
 // Keeps the candidate with the smallest certificate error per side. A side with
 // no candidate past the margin reports candidate 0 with an infinite error.
-static void select_best_candidates(pdhg_solver_state_t *state)
+static void select_best_candidates(pdhg_solver_state_t *state, const ray_candidate_stats_t *stats)
 {
-    infeas_ctx_t *ctx = state->infeas_ctx;
-    int best_p = 0, best_d = 0;
-    double best_perr = INFINITY, best_derr = INFINITY;
+    int best_primal = 0, best_dual = 0;
+    double best_primal_error = INFINITY, best_dual_error = INFINITY;
     for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
     {
-        const infeas_candidate_scalars_t *v = &state->scalars_h->infeas[c];
-        double perr = INFINITY, derr = INFINITY;
-        if (ctx->need_primal[c])
+        const primal_ray_scalars_t *primal = &state->scalars_h->infeas[c].primal_ray;
+        const dual_ray_scalars_t *dual = &state->scalars_h->infeas[c].dual_ray;
+        double primal_error = stats[c].primal_passes_margin
+            ? certificate_error(primal->viol_max_scaled, primal->product_abs_max)
+            : INFINITY;
+        double dual_error =
+            stats[c].dual_passes_margin ? certificate_error(dual->viol_max_scaled, dual->product_abs_max) : INFINITY;
+        if (primal_error < best_primal_error)
         {
-            double viol = v->primal_ray.viol_max_scaled, act = v->primal_ray.product_abs_max;
-            perr = act > 0.0 ? viol / act : (viol > 0.0 ? INFINITY : 0.0);
+            best_primal_error = primal_error;
+            best_primal = c;
         }
-        if (ctx->need_dual[c])
+        if (dual_error < best_dual_error)
         {
-            double viol = v->dual_ray.viol_max_scaled, act = v->dual_ray.product_abs_max;
-            derr = act > 0.0 ? viol / act : (viol > 0.0 ? INFINITY : 0.0);
-        }
-        if (perr < best_perr)
-        {
-            best_perr = perr;
-            best_p = c;
-        }
-        if (derr < best_derr)
-        {
-            best_derr = derr;
-            best_d = c;
+            best_dual_error = dual_error;
+            best_dual = c;
         }
     }
-    state->max_primal_ray_infeasibility = ctx->stats[best_p].max_primal_ray_infeasibility;
-    state->primal_ray_linear_objective = ctx->stats[best_p].primal_ray_linear_objective;
-    state->primal_ray_certificate_error = best_perr;
-    state->max_dual_ray_infeasibility = ctx->stats[best_d].max_dual_ray_infeasibility;
-    state->dual_ray_objective = ctx->stats[best_d].dual_ray_objective;
-    state->dual_ray_certificate_error = best_derr;
+    state->max_primal_ray_infeasibility = stats[best_primal].max_primal_ray_infeasibility;
+    state->primal_ray_linear_objective = stats[best_primal].primal_ray_linear_objective;
+    state->primal_ray_certificate_error = best_primal_error;
+    state->max_dual_ray_infeasibility = stats[best_dual].max_dual_ray_infeasibility;
+    state->dual_ray_objective = stats[best_dual].dual_ray_objective;
+    state->dual_ray_certificate_error = best_dual_error;
 }
 
 // Runs the second round here, with one more synchronization, only when some
 // candidate passes its objective margin.
 void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin)
 {
-    if (evaluate_objective_margins(state, objective_margin))
+    ray_candidate_stats_t stats[INFEAS_NUM_CANDIDATES];
+    evaluate_objective_margins(state, objective_margin, stats);
+
+    bool primal_side = false, dual_side = false;
+    for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
     {
-        launch_abs_products(state);
+        primal_side = primal_side || stats[c].primal_passes_margin;
+        dual_side = dual_side || stats[c].dual_passes_margin;
+    }
+    if (primal_side || dual_side)
+    {
+        launch_abs_products(state, primal_side, dual_side);
         fetch_device_scalars(state);
     }
-    select_best_candidates(state);
+    select_best_candidates(state, stats);
 }

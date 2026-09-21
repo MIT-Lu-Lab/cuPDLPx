@@ -962,12 +962,12 @@ static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t 
     reduce_sum(
         state,
         state->num_variables,
-        [=] __host__ __device__(int j) { return delta_primal[j] * delta_primal[j]; },
+        DEVICE_FN(j) { return delta_primal[j] * delta_primal[j]; },
         &state->scalars_d->restart_primal_sq);
     reduce_sum(
         state,
         state->num_constraints,
-        [=] __host__ __device__(int i) { return delta_dual[i] * delta_dual[i]; },
+        DEVICE_FN(i) { return delta_dual[i] * delta_dual[i]; },
         &state->scalars_d->restart_dual_sq);
     fetch_device_scalars(state);
     double primal_dist = sqrt(state->scalars_h->restart_primal_sq);

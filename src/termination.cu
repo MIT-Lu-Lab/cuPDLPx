@@ -134,18 +134,13 @@ void launch_residual_check(pdhg_solver_state_t *state,
     const double *primal_residual = state->primal_residual, *primal_slack = state->primal_slack;
     const double *dual_residual = state->dual_residual, *dual_slack = state->dual_slack;
     const double *objective = objective_vector, *x = primal_solution;
-    reduce_sum(
-        state,
-        m,
-        [=] __host__ __device__(int i) { return primal_residual[i] * primal_residual[i]; },
-        &out->primal_res_sq);
-    reduce_max(state, m, [=] __host__ __device__(int i) { return fabs(primal_residual[i]); }, &out->primal_res_max);
-    reduce_sum(state, m, [=] __host__ __device__(int i) { return primal_slack[i]; }, &out->primal_slack_sum);
-    reduce_sum(
-        state, n, [=] __host__ __device__(int j) { return dual_residual[j] * dual_residual[j]; }, &out->dual_res_sq);
-    reduce_max(state, n, [=] __host__ __device__(int j) { return fabs(dual_residual[j]); }, &out->dual_res_max);
-    reduce_sum(state, n, [=] __host__ __device__(int j) { return objective[j] * x[j]; }, &out->objective_dot);
-    reduce_sum(state, n, [=] __host__ __device__(int j) { return dual_slack[j] * x[j]; }, &out->dual_slack_dot);
+    reduce_sum(state, m, DEVICE_FN(i) { return primal_residual[i] * primal_residual[i]; }, &out->primal_res_sq);
+    reduce_max(state, m, DEVICE_FN(i) { return fabs(primal_residual[i]); }, &out->primal_res_max);
+    reduce_sum(state, m, DEVICE_FN(i) { return primal_slack[i]; }, &out->primal_slack_sum);
+    reduce_sum(state, n, DEVICE_FN(j) { return dual_residual[j] * dual_residual[j]; }, &out->dual_res_sq);
+    reduce_max(state, n, DEVICE_FN(j) { return fabs(dual_residual[j]); }, &out->dual_res_max);
+    reduce_sum(state, n, DEVICE_FN(j) { return objective[j] * x[j]; }, &out->objective_dot);
+    reduce_sum(state, n, DEVICE_FN(j) { return dual_slack[j] * x[j]; }, &out->dual_slack_dot);
 }
 
 void compute_residual_device(pdhg_solver_state_t *state)
@@ -204,18 +199,9 @@ void compute_fixed_point_error_device(pdhg_solver_state_t *state)
     const int m = state->num_constraints, n = state->num_variables;
     const double *delta_primal = state->delta_primal_solution, *delta_dual = state->delta_dual_solution;
     const double *delta_dual_product = state->delta_dual_product;
-    reduce_sum(
-        state, m, [=] __host__ __device__(int i) { return delta_dual[i] * delta_dual[i]; }, &out->fixed_point_dual_sq);
-    reduce_sum(
-        state,
-        n,
-        [=] __host__ __device__(int j) { return delta_primal[j] * delta_primal[j]; },
-        &out->fixed_point_primal_sq);
-    reduce_sum(
-        state,
-        n,
-        [=] __host__ __device__(int j) { return delta_dual_product[j] * delta_primal[j]; },
-        &out->fixed_point_cross);
+    reduce_sum(state, m, DEVICE_FN(i) { return delta_dual[i] * delta_dual[i]; }, &out->fixed_point_dual_sq);
+    reduce_sum(state, n, DEVICE_FN(j) { return delta_primal[j] * delta_primal[j]; }, &out->fixed_point_primal_sq);
+    reduce_sum(state, n, DEVICE_FN(j) { return delta_dual_product[j] * delta_primal[j]; }, &out->fixed_point_cross);
 }
 
 void compute_fixed_point_error_host(pdhg_solver_state_t *state)

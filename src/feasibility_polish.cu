@@ -218,7 +218,7 @@ static void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, 
     const double *delta = is_primal_polish ? state->delta_primal_solution : state->delta_dual_solution;
     int len = is_primal_polish ? state->num_variables : state->num_constraints;
     double *out = is_primal_polish ? &state->scalars_d->fixed_point_primal_sq : &state->scalars_d->fixed_point_dual_sq;
-    reduce_sum(state, len, [=] __host__ __device__(int i) { return delta[i] * delta[i]; }, out);
+    reduce_sum(state, len, DEVICE_FN(i) { return delta[i] * delta[i]; }, out);
 }
 
 static void compute_polish_fixed_point_error_host(pdhg_solver_state_t *state, bool is_primal_polish)
