@@ -16,17 +16,14 @@
 //
 // Every scalar of a check is one cub::DeviceReduce call over a
 // thrust::transform_iterator: a device lambda computes the quantity from the
-// element index on the fly, and the result is written to a member of the
-// device-side device_scalars_t (internal_types.h), never to the host. The
-// calls only queue kernels and never wait; the whole struct is copied to the
-// host once per check (termination.h).
-// DeviceReduce uses no atomics ("run-to-run" determinism), so a given problem
-// size always produces the same result.
+// element index, and the result is written to a member of the device-side
+// device_scalars_t (internal_types.h). The calls only queue kernels; the whole
+// struct is copied to the host once per check (termination.h). The results
+// are run-to-run deterministic.
 //
-// The lambdas capture device pointers by value from local variables (never
-// the solver state itself) and are marked __host__ __device__ so that the
-// iterator can deduce their result type on the host; nvcc needs
-// --extended-lambda for that (set in CMakeLists.txt).
+// The lambdas capture device pointers by value from local variables and are
+// marked __host__ __device__ so that the iterator can deduce their result type
+// on the host; nvcc needs --extended-lambda for that (set in CMakeLists.txt).
 
 #ifndef CUPDLPX_REDUCE_H
 #define CUPDLPX_REDUCE_H

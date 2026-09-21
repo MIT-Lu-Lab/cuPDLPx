@@ -37,21 +37,13 @@ limitations under the License.
 
 // One candidate of the infeasibility check (infeasibility.cu): a primal ray d,
 // which certifies dual infeasibility, and a dual ray y with reduced cost
-// r = -A^T y, which certifies primal infeasibility. Every norm here is the
-// infinity norm: the certificate criterion is defined with it, and the
-// reported statistics follow PDLP's normalization.
+// r = -A^T y, which certifies primal infeasibility. All norms are infinity
+// norms.
 //
-// The violation exists twice because the two are different maxima over the
-// rows. The scaled one is the numerator of the certificate error
-// viol_max_scaled / product_abs_max, evaluated in the rescaled space: the
-// ratio of the two maxima is not invariant to non-uniform row scaling, and in
-// original units a row with very large coefficients that the ray satisfies by
-// its sign dominates the activity and hides a violated row of ordinary size,
-// which turns junk directions of feasible problems into certificates (see the
-// comment above compute_infeasibility_device). The rescaling has equilibrated
-// the rows, so the maxima compare like with like. The orig one is in the
-// units of the original problem and is only reported
-// (max_primal_ray_infeasibility and its dual twin).
+// The violation is reduced twice. viol_max_scaled / product_abs_max is the
+// certificate error, with both maxima in the rescaled space, where the rows
+// have comparable scales. viol_max_orig is in original units and is only
+// reported.
 typedef struct
 {
     double max_abs;         // ||d||_inf in the original space; normalizes the reported statistics
@@ -199,11 +191,10 @@ typedef struct
     infeas_ctx_t *infeas_ctx; // detection buffers, created before the main loop when detection is on
 
     // Scalars of a termination check (optimality, infeasibility) and of the
-    // restart; see device_scalars_t above. Every quantity is produced on the
-    // device by the reductions of reduce.h and the whole struct is copied to
-    // the host in one go (fetch_device_scalars in termination.cu), so a check
-    // costs one host round trip instead of one per scalar. Both norms of each residual are always computed, so that L2
-    // or L-inf stays a host-side choice.
+    // restart; see device_scalars_t above. They are reduced on the device
+    // (reduce.h) and the whole struct is copied to the host at once
+    // (fetch_device_scalars in termination.cu). Both norms of each residual
+    // are always computed, so that L2 or L-inf stays a host-side choice.
     device_scalars_t *scalars_d;
     device_scalars_t *scalars_h; // pinned, so that the copy is asynchronous
     void *reduce_temp_d;         // temporary storage of the reductions

@@ -15,8 +15,7 @@ limitations under the License.
 */
 
 // Detection of primal and dual infeasibility from ray certificates. See the
-// comment above compute_infeasibility_device for the method, and
-// docs/infeasibility_detection/report.tex for its derivation and evaluation.
+// comment above compute_infeasibility_device for the method.
 
 #include "infeasibility.h"
 #include "reduce.h"
@@ -35,9 +34,8 @@ typedef struct
     double primal_ray_linear_objective;
     double max_dual_ray_infeasibility;
     double dual_ray_objective;
-    // the objective terms with absolute values, |c|^T|d| and the absolute-value
-    // sum of the dual objective terms, in the same scale as the objective terms
-    // above; the objective term relative to this is the margin t3
+    // the objective terms with absolute values, in the same scale as the
+    // objective terms above; the objective margin is measured against them
     double primal_objective_abs;
     double dual_objective_abs;
 } ray_candidate_stats_t;
@@ -49,26 +47,16 @@ __global__ void abs_kernel(double *__restrict__ out, const double *__restrict__ 
         out[i] = fabs(x[i]);
 }
 
-// ---------------------------------------------------------------------------
-// Batched infeasibility detection. The three candidate directions are stacked
-// column by column into dense n x K and m x K matrices and multiplied by A and
-// A^T with one SpMM each, so that the matrix is read once per product instead
-// of once per candidate; the products |A||d| and |A^T||y| use the absolute
-// values of the matrix entries stored on the same CSR indices. Every scalar of
-// a check comes out of the fused passes below (one over the variables and one
-// over the constraints per candidate, all quantities at once, deterministic
-// two-stage reductions into the solver state's scalar array), so a check
-// synchronizes twice at most: once before the objective margin is tested and
-// once after the absolute-value products.
+// The candidate directions are stacked column by column into dense n x K and
+// m x K matrices, so that A and A^T are applied to all of them with one SpMM
+// each. |A| and |A^T| share the CSR indices of A and A^T and only store the
+// absolute values.
 //
-// Memory: a check keeps four dense K-column matrices, the candidates D and Y
-// and the products prod_m and prod_n. The first round fills prod_m with A D
-// and prod_n with A^T Y and reduces everything that depends on them, including
-// the violations that the second round's ratios need. The second round then no longer
-// needs D, Y or the products, so it overwrites D with |D| in place and prod_m
-// with |A||D| (likewise on the dual side) and reduces only their maxima. The
-// next check rewrites all four matrices.
-// ---------------------------------------------------------------------------
+// A check has two rounds. The first fills prod_m with A D and prod_n with
+// A^T Y and reduces every scalar that depends on them. The second runs only
+// when some candidate passes its objective margin: it overwrites D with |D|
+// and prod_m with |A||D| (likewise on the dual side) and reduces their maxima.
+// The next check rewrites all four matrices.
 
 // The scalars of a check are the infeas[] members of device_scalars_t
 // (internal_types.h), one infeas_candidate_scalars_t per candidate.
@@ -78,8 +66,8 @@ struct infeas_ctx
     double *abs_val_A;
     double *abs_val_AT;
     cusparseSpMatDescr_t matA, matAT, matAbsA, matAbsAT;
-    // column-major, one column per candidate; see "Memory" above for what
-    // each holds between the two rounds of a check
+    // column-major, one column per candidate; the comment above says what
+    // each holds in the two rounds of a check
     double *D;      // n x K: primal candidates, then |D|
     double *Y;      // m x K: dual candidates, then |Y|
     double *prod_m; // m x K: A D, then |A||D|
@@ -382,53 +370,31 @@ void infeasibility_context_destroy(infeas_ctx_t *ctx)
     free(ctx);
 }
 
-// On an infeasible problem the PDHG iterates diverge along the infimal
-// displacement vector v, whose primal or dual part is an infeasibility
-// certificate (Applegate et al. 2021; Lu and Yang 2024 for Halpern PDHG). Three
-// candidate directions are evaluated at every termination check:
-//   0. difference of iterates  T(z^k) - z^k, which converges to v at rate
-//      sqrt(log k)/k within a restart epoch and linearly at the epoch starts;
-//   1. the iterate T(z^k) itself, the anchor plus the displacement below;
-//   2. displacement since the last restart  T(z^k) - z^0, the normalized
-//      Halpern iterate of Lu and Yang, rate 1/k within an epoch.
-// The three are complementary in when they are close to v, and no pair matches
-// all three on the benchmarks.
+// On an infeasible problem the PDHG iterates diverge along a direction whose
+// primal or dual part is an infeasibility certificate (Applegate et al. 2021;
+// Lu and Yang 2024 for Halpern PDHG). Three candidate directions are evaluated
+// at every termination check:
+//   0. the difference of iterates  T(z^k) - z^k,
+//   1. the iterate  T(z^k),
+//   2. the displacement since the last restart  T(z^k) - z^0.
 //
-// Each candidate is projected onto the sign conditions of a certificate and
-// normalized by its infinity norm in the original space; its primal part d is
-// a certificate of dual infeasibility and its dual part y one of primal
+// Each candidate is projected onto the sign conditions of a certificate. Its
+// primal part d certifies dual infeasibility and its dual part y primal
 // infeasibility when
-//   the objective term has the right sign with a relative margin delta (the
-//   parameter infeasible_objective_margin; it only has to clear rounding noise
-//   and is deliberately separate from eps_infeasible, so that loosening the
-//   tolerance can only make detection easier),
-//     -c^T d >= delta |c|^T |d|                            (t3, primal side)
-//     Omega(y) >= delta sum |terms|                        (t3, dual side)
+//   the objective term has the right sign with the relative margin
+//   delta = infeasible_objective_margin,
+//     -c^T d >= delta |c|^T |d|                   (primal ray)
+//     Omega(y) >= delta sum |terms of Omega(y)|   (dual ray)
 //   and the violation of the homogeneous constraints, relative to the
-//   activity the ray produces, is at most eps_infeasible:
-//     viol(A d) / max_i (|A||d|)_i <= eps                   (t2, primal side)
-//     viol(A^T y) / max_j (|A^T||y|)_j <= eps               (t2, dual side).
-// Both conditions are relative to the data: a ray with t2 <= eps is an exact
-// certificate for a problem whose matrix differs from A by a relative amount
-// eps, and its objective condition survives relative perturbations of c below
-// the margin. Both ratios are evaluated in the rescaled space of the
-// preconditioner. Row by row viol_i / (|A||d|)_i does not depend on any scaling,
-// but the ratio of the two maxima does: in original units a row with very
-// large coefficients that the projected ray satisfies by its sign dominates the
-// activity and hides a violated row of ordinary size, so that a junk direction
-// of a feasible problem passes (test_huge_objective_and_huge_row is the
-// two-variable case; on 413 feasible instances the closest run is 1.08e-8 in
-// original units against 3.2e-5 after equilibration). The rescaling has
-// equilibrated the rows, so there the maxima compare like with like. A genuine
-// certificate passes in either space, since its violation goes to zero: on the
-// MIPLIB infeasible set both detect the same instances, original units a few
-// percent earlier (docs/infeasibility_detection). The statistics reported to
-// the user are in original units. The plain PDLP
-// ratio viol / (-c^T d) is not used: it is not scale
-// invariant, and a large objective vector lets junk directions pass. The
-// certificate error stored in the state is t2 when the margin holds and
-// INFINITY otherwise; separately for the primal and the dual ray, the candidate
-// with the smallest error is kept and its statistics are reported.
+//   activity the ray produces, is at most eps = eps_infeasible_relative,
+//     viol(A d) / max_i (|A||d|)_i <= eps         (primal ray)
+//     viol(A^T y) / max_j (|A^T||y|)_j <= eps     (dual ray).
+// The two maxima of a ratio are taken in the rescaled space, where the rows
+// have comparable scales; in original units a row with very large coefficients
+// can dominate the activity and hide a violated row. The certificate error
+// stored in the state is this ratio when the margin holds and INFINITY
+// otherwise. Per side the candidate with the smallest error is kept, and its
+// statistics are reported in original units.
 //
 // First round, kernels only: the candidates, A D and A^T Y, and every scalar
 // that depends on them. infeasibility_context_create must have run.
