@@ -18,9 +18,6 @@ limitations under the License.
 
 #include "reduce.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-
 void reduce_temp_storage_create(pdhg_solver_state_t *state)
 {
     int n_max = state->num_variables > state->num_constraints ? state->num_variables : state->num_constraints;
@@ -31,19 +28,6 @@ void reduce_temp_storage_create(pdhg_solver_state_t *state)
     size_t sum_bytes = 0, max_bytes = 0;
     CUDA_CHECK(cub::DeviceReduce::Sum(NULL, sum_bytes, in, out, n_max, state->stream));
     CUDA_CHECK(cub::DeviceReduce::Max(NULL, max_bytes, in, out, n_max, state->stream));
-    // headroom over the queried size; reduce_check_temp_storage catches the rest
-    state->reduce_temp_bytes = 2 * (sum_bytes > max_bytes ? sum_bytes : max_bytes) + 256;
+    state->reduce_temp_bytes = sum_bytes > max_bytes ? sum_bytes : max_bytes;
     CUDA_CHECK(cudaMalloc(&state->reduce_temp_d, state->reduce_temp_bytes));
-}
-
-void reduce_check_temp_storage(const pdhg_solver_state_t *state, size_t bytes)
-{
-    if (bytes > state->reduce_temp_bytes)
-    {
-        fprintf(stderr,
-                "Error: a reduction needs %zu bytes of temporary storage, %zu allocated.\n",
-                bytes,
-                state->reduce_temp_bytes);
-        exit(EXIT_FAILURE);
-    }
 }
