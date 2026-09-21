@@ -117,7 +117,7 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `--sv_max_iter` | `int` | Max iterations for singular value estimation | `5000` |
 | `--sv_tol` | `float` | Tolerance for singular value estimation | `1e-4` |
 | `--no_presolve` | `flag` | Disable presolve | `enabled` |
-| `--eps_infeasible` | `double` | Largest relative constraint residual of an accepted ray certificate | `1e-8` |
+| `--eps_infeasible` | `double` | Largest relative constraint residual of an accepted ray certificate, relative to the activity `|A||x|` of the ray on the problem as given | `1e-8` |
 | `--infeasible_obj_margin` | `double` | Smallest relative objective margin of an accepted ray certificate (`0`: plain sign test) | `1e-8` |
 | `--no_infeasibility_detection` | `flag` | Disable infeasibility detection | `enabled` |
 | `-f`,`--feasibility_polishing` |`flag` | Run the polishing loop | `false` |

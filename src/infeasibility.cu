@@ -183,8 +183,8 @@ __global__ void abs_columns_kernel(double *__restrict__ X, int rows)
 }
 
 // First-round scalars of candidate c from its columns of D, Y and the products
-// A D and A^T Y. Violations come in the scaled space (they decide the
-// certificate) and in the original space (they are reported).
+// A D and A^T Y. The violations are in original units; they decide the
+// certificate and are reported.
 static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
@@ -219,12 +219,11 @@ static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
     reduce_sum(state, n, [=] __host__ __device__(int j) { return objective[j] * d[j]; }, &out->primal_ray.obj);
     reduce_sum(
         state, n, [=] __host__ __device__(int j) { return fabs(objective[j] * d[j]); }, &out->primal_ray.obj_abs);
-    reduce_max(state, m, row_violation, &out->primal_ray.viol_max_scaled);
     reduce_max(
         state,
         m,
         [=] __host__ __device__(int i) { return row_violation(i) * constraint_rescaling[i]; },
-        &out->primal_ray.viol_max_orig);
+        &out->primal_ray.viol_max);
 
     // the dual ray y and its reduced cost r = -A^T y: the norm of y in the
     // original space, the two parts of the dual objective term with and
@@ -266,12 +265,11 @@ static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
         n,
         [=] __host__ __device__(int j) { return fabs(r_lower_term(j)) + fabs(r_upper_term(j)); },
         &out->dual_ray.obj_var_bounds_abs);
-    reduce_max(state, n, reduced_cost_violation, &out->dual_ray.viol_max_scaled);
     reduce_max(
         state,
         n,
         [=] __host__ __device__(int j) { return reduced_cost_violation(j) * variable_rescaling[j]; },
-        &out->dual_ray.viol_max_orig);
+        &out->dual_ray.viol_max);
 }
 
 static void spmm_buffer(
@@ -411,7 +409,21 @@ void infeasibility_context_destroy(infeas_ctx_t *ctx)
 // Both conditions are relative to the data: a ray with t2 <= eps is an exact
 // certificate for a problem whose matrix differs from A by a relative amount
 // eps, and its objective condition survives relative perturbations of c below
-// the margin. The plain PDLP ratio viol / (-c^T d) is not used: it is not scale
+// the margin. Both ratios are formed in the units of the original problem: the
+// violation and the activity are multiplied back by the row (column) rescaling
+// factors on the device, so eps refers to the matrix as given and the verdict
+// does not depend on the preconditioner. OSQP, SCS and PDLP test their
+// certificates in the original space as well. The maximum over rows is not
+// invariant to a non-uniform row scaling of the input, like the optimality
+// residuals, and a row with very large coefficients that the projected ray
+// satisfies by its sign can dominate the activity and hide a violated row of
+// ordinary size (test_huge_objective_and_huge_row, coefficient range 1e10, is
+// the known case). On the MIPLIB infeasible set the original and the
+// equilibrated space detect the same instances, the original one on average
+// a few percent earlier; on 413 feasible instances neither makes a false
+// claim, but the closest run is 1.08e-8 in the original space against 3.2e-5
+// in the equilibrated one (docs/infeasibility_detection). The plain PDLP
+// ratio viol / (-c^T d) is not used: it is not scale
 // invariant, and a large objective vector lets junk directions pass. The
 // certificate error stored in the state is t2 when the margin holds and
 // INFINITY otherwise; separately for the primal and the dual ray, the candidate
@@ -470,13 +482,13 @@ static bool evaluate_objective_margins(pdhg_solver_state_t *state, double object
         double primal_norm = v->primal_ray.max_abs, dual_norm = v->dual_ray.max_abs;
         s->primal_ray_linear_objective = primal_norm > 0.0 ? v->primal_ray.obj / (bc * oc) / primal_norm : 0.0;
         s->primal_objective_abs = primal_norm > 0.0 ? v->primal_ray.obj_abs / (bc * oc) / primal_norm : 0.0;
-        s->max_primal_ray_infeasibility = primal_norm > 0.0 ? v->primal_ray.viol_max_orig / bc / primal_norm : 0.0;
+        s->max_primal_ray_infeasibility = primal_norm > 0.0 ? v->primal_ray.viol_max / bc / primal_norm : 0.0;
         s->dual_ray_objective =
             dual_norm > 0.0 ? (v->dual_ray.obj_con_bounds + v->dual_ray.obj_var_bounds) / (bc * oc) / dual_norm : 0.0;
         s->dual_objective_abs = dual_norm > 0.0
             ? (v->dual_ray.obj_con_bounds_abs + v->dual_ray.obj_var_bounds_abs) / (bc * oc) / dual_norm
             : 0.0;
-        s->max_dual_ray_infeasibility = dual_norm > 0.0 ? v->dual_ray.viol_max_orig / oc / dual_norm : 0.0;
+        s->max_dual_ray_infeasibility = dual_norm > 0.0 ? v->dual_ray.viol_max / oc / dual_norm : 0.0;
         ctx->need_primal[c] = s->primal_ray_linear_objective < 0.0 && s->primal_objective_abs > 0.0 &&
             -s->primal_ray_linear_objective >= objective_margin * s->primal_objective_abs;
         ctx->need_dual[c] = s->dual_ray_objective > 0.0 && s->dual_objective_abs > 0.0 &&
@@ -508,10 +520,11 @@ static void launch_abs_products(pdhg_solver_state_t *state)
         for (int c = 0; c < K; c++)
         {
             const double *p = ctx->prod_m + (size_t)c * m;
+            const double *constraint_rescaling = state->constraint_rescaling;
             reduce_max(
                 state,
                 m,
-                [=] __host__ __device__(int i) { return p[i]; },
+                [=] __host__ __device__(int i) { return p[i] * constraint_rescaling[i]; },
                 &state->scalars_d->infeas[c].primal_ray.product_abs_max);
         }
     }
@@ -522,10 +535,11 @@ static void launch_abs_products(pdhg_solver_state_t *state)
         for (int c = 0; c < K; c++)
         {
             const double *p = ctx->prod_n + (size_t)c * n;
+            const double *variable_rescaling = state->variable_rescaling;
             reduce_max(
                 state,
                 n,
-                [=] __host__ __device__(int j) { return p[j]; },
+                [=] __host__ __device__(int j) { return p[j] * variable_rescaling[j]; },
                 &state->scalars_d->infeas[c].dual_ray.product_abs_max);
         }
     }
@@ -545,12 +559,12 @@ static void select_best_candidates(pdhg_solver_state_t *state)
         double perr = INFINITY, derr = INFINITY;
         if (ctx->need_primal[c])
         {
-            double viol = v->primal_ray.viol_max_scaled, act = v->primal_ray.product_abs_max;
+            double viol = v->primal_ray.viol_max, act = v->primal_ray.product_abs_max;
             perr = act > 0.0 ? viol / act : (viol > 0.0 ? INFINITY : 0.0);
         }
         if (ctx->need_dual[c])
         {
-            double viol = v->dual_ray.viol_max_scaled, act = v->dual_ray.product_abs_max;
+            double viol = v->dual_ray.viol_max, act = v->dual_ray.product_abs_max;
             derr = act > 0.0 ? viol / act : (viol > 0.0 ? INFINITY : 0.0);
         }
         if (perr < best_perr)
