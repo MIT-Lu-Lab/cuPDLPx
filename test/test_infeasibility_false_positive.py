@@ -60,21 +60,7 @@ def test_huge_objective_with_dummy_equality(presolve, atol):
     assert abs(model.ObjVal / -2.002e10 - 1.0) < atol
 
 
-@pytest.mark.parametrize(
-    "presolve",
-    [
-        pytest.param(
-            False,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="known limitation of the certificate ratio in original units: the 1e10 row is "
-                "satisfied by the sign of the projected ray, dominates the activity |A||d| and hides the "
-                "violated row x + y <= 2, so the LP is declared DUAL_INFEASIBLE; presolve removes the row",
-            ),
-        ),
-        True,
-    ],
-)
+@pytest.mark.parametrize("presolve", [False, True])
 def test_huge_objective_and_huge_row(presolve, atol):
     """
     Same LP, but the large coefficients sit in a real constraint:

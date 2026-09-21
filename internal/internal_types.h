@@ -26,10 +26,9 @@ limitations under the License.
 #include <time.h>
 
 // The scalars a termination check produces on the device, copied to the host
-// in one go; see pdhg_solver_state_t::scalars_h. The optimality scalars are in
-// the rescaled space and the host halves unscale; the certificate scalars of
-// the infeasibility check are formed in original units on the device, see
-// primal_ray_scalars_t. Name parts: res = residual,
+// in one go; see pdhg_solver_state_t::scalars_h. They are in the rescaled
+// space and the host halves unscale, except the reported ray violations
+// (viol_max_orig below). Name parts: res = residual,
 // sq = sum of squares, max = infinity norm, dot = inner product.
 //
 // Each member is the destination of one reduction (reduce.h).
@@ -42,23 +41,25 @@ limitations under the License.
 // infinity norm: the certificate criterion is defined with it, and the
 // reported statistics follow PDLP's normalization.
 //
-// The violation of the sign conditions and the activity |A||d| are both in
-// the units of the original problem (the row and column rescaling factors are
-// multiplied back on the device), so the certificate error
-// viol_max / product_abs_max is a relative perturbation of the matrix as
-// given and does not depend on the preconditioner. The two scalar rescaling
-// factors beta_b, beta_c cancel in the ratio and are left out; the reported
-// statistic divides viol_max by them and by max_abs. Neither maximum is
-// invariant to a non-uniform row scaling of the input, like the optimality
-// residuals; OSQP, SCS and PDLP test their certificates in the original space
-// as well.
+// The violation exists twice because the two are different maxima over the
+// rows. The scaled one is the numerator of the certificate error
+// viol_max_scaled / product_abs_max, evaluated in the rescaled space: the
+// ratio of the two maxima is not invariant to non-uniform row scaling, and in
+// original units a row with very large coefficients that the ray satisfies by
+// its sign dominates the activity and hides a violated row of ordinary size,
+// which turns junk directions of feasible problems into certificates (see the
+// comment above compute_infeasibility_device). The rescaling has equilibrated
+// the rows, so the maxima compare like with like. The orig one is in the
+// units of the original problem and is only reported
+// (max_primal_ray_infeasibility and its dual twin).
 typedef struct
 {
     double max_abs;         // ||d||_inf in the original space; normalizes the reported statistics
     double obj;             // c^T d, the objective term
     double obj_abs;         // |c|^T |d|, the same with absolute values
-    double viol_max;        // max violation of the sign conditions on A d, original units
-    double product_abs_max; // max_i (|A||d|)_i, original units (second round)
+    double viol_max_scaled; // max violation of the sign conditions on A d, rescaled space
+    double product_abs_max; // max_i (|A||d|)_i, scaled like the violation above (second round)
+    double viol_max_orig;   // the violation in original units, reported only
 } primal_ray_scalars_t;
 
 typedef struct
@@ -68,8 +69,9 @@ typedef struct
     double obj_var_bounds;     // l_v^T r^+ - u_v^T r^-, the variable-bound part
     double obj_con_bounds_abs; // |l_c|^T y^+ + |u_c|^T y^-, the constraint-bound part with absolute values
     double obj_var_bounds_abs; // |l_v|^T r^+ + |u_v|^T r^-, the variable-bound part with absolute values
-    double viol_max;           // max violation of the sign conditions on r, original units
-    double product_abs_max;    // max_j (|A^T||y|)_j, original units (second round)
+    double viol_max_scaled;    // max violation of the sign conditions on r, rescaled space
+    double product_abs_max;    // max_j (|A^T||y|)_j, scaled like the violation above (second round)
+    double viol_max_orig;      // the violation in original units, reported only
 } dual_ray_scalars_t;
 
 typedef struct
