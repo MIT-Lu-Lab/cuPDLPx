@@ -129,6 +129,9 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
     fprintf(outfile, "Dual Ray Objective: %e\n", result->dual_ray_objective);
     fprintf(outfile, "Runtime (sec): %e\n", result->cumulative_time_sec);
     fprintf(outfile, "Iterations Count: %d\n", result->total_count);
+    fprintf(outfile, "ASB Step Raise Count: %d\n", result->asb_raise_count);
+    fprintf(outfile, "ASB Revert Count: %d\n", result->asb_revert_count);
+    fprintf(outfile, "ASB Power Iterations: %d\n", result->asb_pi_iterations);
     fprintf(outfile, "Primal Objective Value: %e\n", result->primal_objective_value);
     fprintf(outfile, "Dual Objective Value: %e\n", result->dual_objective_value);
     fprintf(outfile, "Relative Primal Residual: %e\n", result->relative_primal_residual);
@@ -167,6 +170,9 @@ void print_usage(const char *prog_name)
     fprintf(stderr,
             "  -v, --verbose                       "
             "Enable verbose logging (enabled by default; kept for compatibility).\n");
+    fprintf(stderr,
+            "      --debug                         "
+            "Developer diagnostics (implies verbose).\n");
     fprintf(stderr,
             "  -q, --quiet                         "
             "Disable verbose logging.\n");
@@ -235,6 +241,39 @@ void print_usage(const char *prog_name)
     fprintf(stderr,
             "      --infinite_bound <value>.       "
             "Bounds at or beyond this are treated as infinite (default: 1e20).\n");
+    fprintf(stderr,
+            "      --no_active_set_boost           "
+            "Disable the active-set stepsize boost (default: enabled).\n");
+    fprintf(stderr,
+            "      --asb_activation_tol <tol>      "
+            "Residual threshold at which the boost activates (default: 1e-4).\n");
+    fprintf(stderr,
+            "      --asb_window_iter <iters>       "
+            "Number of recent iterations used to identify the active set (default: 10000).\n");
+    fprintf(stderr,
+            "      --asb_safety_factor <factor>    "
+            "Boosted step = factor / estimated singular value (default: 0.9).\n");
+    fprintf(stderr,
+            "      --asb_max_reverts <count>       "
+            "Divergences tolerated before the boost turns off; a diverged step is always reverted (default: 2).\n");
+    fprintf(stderr,
+            "      --asb_min_raise_ratio <ratio>   "
+            "Minimum ratio for a step increase (default: 1.1).\n");
+    fprintf(stderr,
+            "      --asb_reestimate_change_ratio <ratio> "
+            "Fraction of the active set that must change before re-estimating (default: 0.01).\n");
+    fprintf(stderr,
+            "      --asb_constraint_tol <tol>      "
+            "Tolerance for treating a constraint as binding (default: 1e-8).\n");
+    fprintf(stderr,
+            "      --asb_variable_tol <tol>        "
+            "Tolerance for treating a variable as at its bound (default: 1e-8).\n");
+    fprintf(stderr,
+            "      --asb_divergence_ceiling_ratio <ratio> "
+            "Step ceiling after a revert, relative to the diverged step (default: 0.7).\n");
+    fprintf(stderr,
+            "      --asb_divergence_margin <margin> "
+            "Allowed fixed-point error increase before a revert (default: 0.05).\n");
 }
 
 int main(int argc, char *argv[])
@@ -250,8 +289,8 @@ int main(int argc, char *argv[])
                                            {"eps_opt", required_argument, 0, 1003},
                                            {"eps_feas", required_argument, 0, 1004},
                                            {"eps_feas_polish", required_argument, 0, 1006},
-                                           {"eps_infeasible", required_argument, 0, 1019},
-                                           {"infeasible_ray_objective_margin", required_argument, 0, 1021},
+                                           {"eps_infeasible", required_argument, 0, 1031},
+                                           {"infeasible_ray_objective_margin", required_argument, 0, 1033},
                                            {"feasibility_polishing", no_argument, 0, 'f'},
                                            {"geo_mean_iter", required_argument, 0, 1018},
                                            {"l_inf_ruiz_iter", required_argument, 0, 1007},
@@ -262,10 +301,22 @@ int main(int argc, char *argv[])
                                            {"sv_tol", required_argument, 0, 1012},
                                            {"eval_freq", required_argument, 0, 1013},
                                            {"opt_norm", required_argument, 0, 1014},
-                                           {"no_infeasibility_detection", no_argument, 0, 1020},
+                                           {"no_infeasibility_detection", no_argument, 0, 1032},
                                            {"no_presolve", no_argument, 0, 1015},
                                            {"matrix_zero_tol", required_argument, 0, 1016},
                                            {"infinite_bound", required_argument, 0, 1017},
+                                           {"no_active_set_boost", no_argument, 0, 1019},
+                                           {"asb_activation_tol", required_argument, 0, 1029},
+                                           {"debug", no_argument, 0, 1030},
+                                           {"asb_window_iter", required_argument, 0, 1020},
+                                           {"asb_safety_factor", required_argument, 0, 1021},
+                                           {"asb_max_reverts", required_argument, 0, 1022},
+                                           {"asb_min_raise_ratio", required_argument, 0, 1023},
+                                           {"asb_reestimate_change_ratio", required_argument, 0, 1024},
+                                           {"asb_constraint_tol", required_argument, 0, 1025},
+                                           {"asb_variable_tol", required_argument, 0, 1026},
+                                           {"asb_divergence_ceiling_ratio", required_argument, 0, 1027},
+                                           {"asb_divergence_margin", required_argument, 0, 1028},
                                            {0, 0, 0, 0}};
 
     int opt;
@@ -297,10 +348,10 @@ int main(int argc, char *argv[])
             case 1006: // --eps_feas_polish_relative
                 params.termination_criteria.eps_feas_polish_relative = atof(optarg);
                 break;
-            case 1019: // --eps_infeasible
+            case 1031: // --eps_infeasible
                 params.termination_criteria.eps_infeasible_relative = atof(optarg);
                 break;
-            case 1021: // --infeasible_ray_objective_margin
+            case 1033: // --infeasible_ray_objective_margin
                 params.termination_criteria.infeasible_ray_objective_margin = atof(optarg);
                 break;
             case 'f': // --feasibility_polishing
@@ -348,7 +399,7 @@ int main(int argc, char *argv[])
                 }
             }
             break;
-            case 1020: // --no_infeasibility_detection
+            case 1032: // --no_infeasibility_detection
                 params.infeasibility_detection = false;
                 break;
             case 1015: // --no_presolve
@@ -359,6 +410,42 @@ int main(int argc, char *argv[])
                 break;
             case 1017: // --infinite_bound
                 params.infinite_bound = atof(optarg);
+                break;
+            case 1019: // --no_active_set_boost
+                params.active_set_boost = false;
+                break;
+            case 1020: // --asb_window_iter
+                params.asb_window_iter = atoi(optarg);
+                break;
+            case 1021: // --asb_safety_factor
+                params.asb_safety_factor = atof(optarg);
+                break;
+            case 1022: // --asb_max_reverts
+                params.asb_max_reverts = atoi(optarg);
+                break;
+            case 1023: // --asb_min_raise_ratio
+                params.asb_min_raise_ratio = atof(optarg);
+                break;
+            case 1024: // --asb_reestimate_change_ratio
+                params.asb_reestimate_change_ratio = atof(optarg);
+                break;
+            case 1025: // --asb_constraint_tol
+                params.asb_constraint_tol = atof(optarg);
+                break;
+            case 1026: // --asb_variable_tol
+                params.asb_variable_tol = atof(optarg);
+                break;
+            case 1027: // --asb_divergence_ceiling_ratio
+                params.asb_divergence_ceiling_ratio = atof(optarg);
+                break;
+            case 1028: // --asb_divergence_margin
+                params.asb_divergence_margin = atof(optarg);
+                break;
+            case 1029: // --asb_activation_tol
+                params.asb_activation_tol = atof(optarg);
+                break;
+            case 1030: // --debug
+                params.debug = true;
                 break;
             case '?': // Unknown option
                 return 1;

@@ -71,12 +71,14 @@ extern "C"
 
     void *safe_realloc(void *ptr, size_t new_size);
 
-    double estimate_maximum_singular_value(cusparseHandle_t sparse_handle,
-                                           cublasHandle_t blas_handle,
-                                           const cu_sparse_matrix_csr_t *A,
-                                           const cu_sparse_matrix_csr_t *AT,
-                                           int max_iterations,
-                                           double tolerance);
+    sv_estimator_ctx_t *sv_estimator_create(cusparseHandle_t sparse_handle,
+                                            cublasHandle_t blas_handle,
+                                            const cu_sparse_matrix_csr_t *A,
+                                            const cu_sparse_matrix_csr_t *AT);
+
+    sv_estimator_result_t sv_estimator_run(sv_estimator_ctx_t *ctx, const sv_estimator_opts_t *opts);
+
+    void sv_estimator_free(sv_estimator_ctx_t *ctx);
 
     bool cupdlpx_use_spmvop_by_default(void);
 
@@ -135,11 +137,15 @@ extern "C"
 
     void pdhg_final_log(const cupdlpx_result_t *result, const pdhg_parameters_t *params);
 
-    void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose);
+    void display_iteration_header(const pdhg_parameters_t *params);
+
+    void display_iteration_stats(pdhg_solver_state_t *solver_state, const pdhg_parameters_t *params);
 
     const char *termination_reason_to_string(termination_reason_t reason);
 
     int get_print_frequency(int iter);
+
+    void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 
     void fill_or_copy(double **dest, int n, const double *src, double fill_value);
 

@@ -360,10 +360,7 @@ void primal_feasibility_polish(const pdhg_parameters_t *params,
         state->total_count += params->termination_evaluation_frequency;
 
         check_feas_polishing_termination_criteria(state, ori_state, &params->termination_criteria, true);
-        if (state->total_count % get_print_frequency(state->total_count) == 0)
-        {
-            display_feas_polish_iteration_stats(state, params->verbose, true);
-        }
+        display_feas_polish_iteration_stats(state, params->verbose, true);
 
         // Check Adaptive Restart
         do_restart =
@@ -438,10 +435,7 @@ void dual_feasibility_polish(const pdhg_parameters_t *params,
         state->total_count += params->termination_evaluation_frequency;
 
         check_feas_polishing_termination_criteria(state, ori_state, &params->termination_criteria, false);
-        if (state->total_count % get_print_frequency(state->total_count) == 0)
-        {
-            display_feas_polish_iteration_stats(state, params->verbose, false);
-        }
+        display_feas_polish_iteration_stats(state, params->verbose, false);
 
         // Check Adaptive Restart
         do_restart =
@@ -464,6 +458,7 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(const pdhg_solve
 {
     pdhg_solver_state_t *primal_state = (pdhg_solver_state_t *)safe_malloc(sizeof(pdhg_solver_state_t));
     *primal_state = *original_state;
+    primal_state->d_asb_dual_projection_input = NULL;
     int num_var = original_state->num_variables;
     int num_cons = original_state->num_constraints;
 
@@ -584,6 +579,7 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(const pdhg_solver_
 {
     pdhg_solver_state_t *dual_state = (pdhg_solver_state_t *)safe_malloc(sizeof(pdhg_solver_state_t));
     *dual_state = *original_state;
+    dual_state->d_asb_dual_projection_input = NULL;
     int num_var = original_state->num_variables;
     int num_cons = original_state->num_constraints;
 

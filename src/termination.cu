@@ -208,7 +208,10 @@ void compute_fixed_point_error_host(pdhg_solver_state_t *state)
 {
     const device_scalars_t *v = state->scalars_h;
     double movement = v->fixed_point_primal_sq * state->primal_weight + v->fixed_point_dual_sq / state->primal_weight;
-    double interaction = 2.0 * state->step_size * v->fixed_point_cross;
+    // measure in the M-norm of the smaller (global) step: M is indefinite for a
+    // controller-boosted step
+    double norm_step = fmin(state->step_size, state->base_step_size);
+    double interaction = 2.0 * norm_step * v->fixed_point_cross;
     state->fixed_point_error = sqrt(movement + interaction);
 }
 

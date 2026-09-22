@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include "active_set_boost.h"
 #include "cupdlpx.h"
 #include "feasibility_polish.h"
 #include "infeasibility.h"
@@ -105,6 +106,7 @@ __global__ void compute_next_dual_solution_major_kernel(double *__restrict__ cur
                                                         const double *__restrict__ const_ub,
                                                         int n,
                                                         const double *__restrict__ d_step_size,
+                                                        double *__restrict__ dual_projection_input,
                                                         const int *__restrict__ d_base_count,
                                                         int k_offset,
                                                         double reflection_coeff);
@@ -116,7 +118,6 @@ void compute_next_dual_solution(pdhg_solver_state_t *state,
                                 const int k_offset,
                                 const double reflection_coefficient,
                                 bool is_major);
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
 static void check_params_validity(const pdhg_parameters_t *params);
 
@@ -146,10 +147,16 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     }
 
     pdhg_solver_state_t *state = initialize_solver_state(working_problem, params, original_problem->objective_sense);
-    display_iteration_stats(state, params->verbose);
-
     initialize_step_size_and_primal_weight(state, params);
     sync_step_sizes_to_gpu(state);
+    if (params->active_set_boost)
+    {
+        active_set_boost_init(state);
+    }
+
+    display_iteration_header(params);
+    compute_residual(state, params->optimality_norm);
+    display_iteration_stats(state, params);
 
     state->start_time = clock();
     bool do_restart = false;
@@ -227,26 +234,31 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 
-        // Logging
-        if (state->total_count % get_print_frequency(state->total_count) == 0)
+        if (params->active_set_boost)
         {
-            display_iteration_stats(state, params->verbose);
+            active_set_boost_update_window(state, params);
         }
 
         // Check Termination
         check_termination_criteria(state, &params->termination_criteria);
-        if (state->termination_reason != TERMINATION_REASON_UNSPECIFIED)
-        {
-            break;
-        }
+        bool terminated = state->termination_reason != TERMINATION_REASON_UNSPECIFIED;
 
-        // Check Adaptive Restart
-        do_restart =
-            should_do_adaptive_restart(state, &params->restart_params, params->termination_evaluation_frequency);
-        if (do_restart)
+        if (params->active_set_boost && active_set_boost_check(state, params) == ASB_ACTION_REVERT)
+        {
+            do_restart = true;
+        }
+        else if (!terminated &&
+                 should_do_adaptive_restart(state, &params->restart_params, params->termination_evaluation_frequency))
         {
             perform_restart(state, params);
-            sync_step_sizes_to_gpu(state);
+            do_restart = true;
+        }
+
+        display_iteration_stats(state, params);
+
+        if (terminated)
+        {
+            break;
         }
     }
 
@@ -259,12 +271,14 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     {
         state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_residual(state, params->optimality_norm);
-        display_iteration_stats(state, params->verbose);
+        display_iteration_stats(state, params);
     }
 
     if (params->feasibility_polishing && state->termination_reason != TERMINATION_REASON_DUAL_INFEASIBLE &&
         state->termination_reason != TERMINATION_REASON_PRIMAL_INFEASIBLE)
     {
+        state->step_size = state->base_step_size;
+        sync_step_sizes_to_gpu(state);
         feasibility_polish(params, state);
     }
 
@@ -285,7 +299,7 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     return result;
 }
 
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
+void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
 {
     double current_primal_step = state->step_size / state->primal_weight;
     double current_dual_step = state->step_size * state->primal_weight;
@@ -304,11 +318,10 @@ void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
 
 static void check_params_validity(const pdhg_parameters_t *params)
 {
-    if (params->termination_evaluation_frequency < 3)
+    char error_message[256];
+    if (cupdlpx_validate_parameters(params, error_message, sizeof(error_message)) != 0)
     {
-        fprintf(stderr,
-                "Error: termination_evaluation_frequency must be >= 3 (got %d).\n",
-                params->termination_evaluation_frequency);
+        fprintf(stderr, "Error: %s.\n", error_message);
         exit(EXIT_FAILURE);
     }
 }
@@ -641,30 +654,6 @@ static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_
                                               state->pdhg_dual_solution,
                                               state->dual_product);
 
-    if (params->verbose)
-    {
-        printf("---------------------------------------------------------------------"
-               "------------------\n");
-        printf("%s | %s | %s | %s \n",
-               "   runtime    ",
-               "    objective     ",
-               "  absolute residuals   ",
-               "  relative residuals   ");
-        printf("%s %s | %s %s | %s %s %s | %s %s %s \n",
-               "  iter",
-               "  time ",
-               " pr obj ",
-               "  du obj ",
-               " pr res",
-               " du res",
-               "  gap  ",
-               " pr res",
-               " du res",
-               "  gap  ");
-        printf("---------------------------------------------------------------------"
-               "------------------\n");
-    }
-
     return state;
 }
 
@@ -824,6 +813,7 @@ __global__ void compute_next_dual_solution_major_kernel(double *__restrict__ cur
                                                         const double *__restrict__ const_ub,
                                                         int n,
                                                         const double *__restrict__ d_step_size,
+                                                        double *__restrict__ dual_projection_input,
                                                         const int *__restrict__ d_base_count,
                                                         int k_offset,
                                                         double reflection_coeff)
@@ -835,6 +825,8 @@ __global__ void compute_next_dual_solution_major_kernel(double *__restrict__ cur
     if (i < n)
     {
         double temp = current_dual[i] / step_size - primal_product[i];
+        if (dual_projection_input)
+            dual_projection_input[i] = temp;
         double temp_proj = fmax(-const_ub[i], fmin(temp, -const_lb[i]));
         pdhg_dual[i] = (temp - temp_proj) * step_size;
         reflected_dual[i] = 2.0 * pdhg_dual[i] - current_dual[i];
@@ -930,6 +922,7 @@ void compute_next_dual_solution(pdhg_solver_state_t *state,
             state->constraint_upper_bound,
             state->num_constraints,
             state->d_dual_step_size,
+            state->d_asb_dual_projection_input,
             state->d_inner_count,
             k_offset,
             reflection_coefficient);
@@ -952,6 +945,11 @@ void compute_next_dual_solution(pdhg_solver_state_t *state,
 
 static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
+    if (params->debug)
+    {
+        printf("[restart] iter %d: %s\n", state->total_count, state->last_restart_reason);
+    }
+    state->restart_count++;
     compute_solution_difference(state,
                                 state->initial_primal_solution,
                                 state->pdhg_primal_solution,
@@ -1024,6 +1022,12 @@ static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t 
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
+
+    if (params->active_set_boost)
+    {
+        active_set_boost_on_restart(state, params);
+    }
+    sync_step_sizes_to_gpu(state);
 }
 
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
@@ -1034,14 +1038,27 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     }
     else
     {
-        double max_sv = estimate_maximum_singular_value(state->sparse_handle,
-                                                        state->blas_handle,
-                                                        state->constraint_matrix,
-                                                        state->constraint_matrix_t,
-                                                        params->sv_max_iter,
-                                                        params->sv_tol);
-        state->step_size = 0.998 / max_sv;
+        sv_estimator_opts_t opts = {};
+        opts.max_iterations = params->sv_max_iter;
+        opts.tolerance = params->sv_tol;
+        sv_estimator_ctx_t *estimator = sv_estimator_create(
+            state->sparse_handle, state->blas_handle, state->constraint_matrix, state->constraint_matrix_t);
+        sv_estimator_result_t sv = sv_estimator_run(estimator, &opts);
+        sv_estimator_free(estimator);
+        state->step_size = (sv.status == SV_ESTIMATOR_DEGENERATE) ? 1.0 : 0.998 / sv.max_singular_value;
+        if (params->verbose)
+        {
+            const char *note = sv.status == SV_ESTIMATOR_CONVERGED ? "converged"
+                : sv.status == SV_ESTIMATOR_DEGENERATE             ? "degenerate"
+                                                                   : "not converged";
+            printf("\nEstimating step size\n");
+            printf("  Power iterations   : %d (%s)\n", sv.iterations, note);
+            printf("  Max singular value : %.4e\n", sv.max_singular_value);
+            printf("  Step size          : %.4e\n", state->step_size);
+        }
     }
+
+    state->base_step_size = state->step_size;
 
     if (params->bound_objective_rescaling)
     {
@@ -1060,6 +1077,10 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
     {
         return;
     }
+
+    /* the cached estimator references the solver's handles and matrix storage:
+       destroy it first */
+    active_set_boost_free(state);
 
     if (state->spmv_ctx)
         cupdlpx_spmv_ctx_destroy(state->spmv_ctx);
@@ -1242,13 +1263,11 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state, co
     results->primal_ray_linear_objective = state->primal_ray_linear_objective;
     results->dual_ray_objective = state->dual_ray_objective;
     results->termination_reason = state->termination_reason;
+    results->asb_raise_count = state->asb_raise_count;
+    results->asb_revert_count = state->asb_revert_count;
+    results->asb_pi_iterations = state->asb_pi_iterations;
     results->feasibility_polishing_time = state->feasibility_polishing_time;
     results->feasibility_iteration = state->feasibility_iteration;
-    // if (presolve_stats != NULL) {
-    //     results->presolve_stats = *presolve_stats;
-    // } else {
-    //     memset(&(results->presolve_stats), 0, sizeof(PresolveStats));
-    // }
 
     return results;
 }
