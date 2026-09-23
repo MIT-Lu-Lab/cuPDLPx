@@ -113,7 +113,6 @@ void active_set_boost_init(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMalloc(&state->d_asb_dual_anchor, m * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->d_asb_dual_slack_anchor, n * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->d_asb_dual_projection_input, m * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->d_asb_count, 4 * sizeof(int)));
     CUDA_CHECK(cudaMemset(state->d_asb_var_last_free, 0xff, n * sizeof(int)));    /* -1 */
     CUDA_CHECK(cudaMemset(state->d_asb_row_last_binding, 0xff, m * sizeof(int))); /* -1 */
     CUDA_CHECK(cudaMemset(state->d_asb_col_mask, 0, n * sizeof(bool)));
@@ -143,8 +142,6 @@ void active_set_boost_free(pdhg_solver_state_t *state)
         cudaFree(state->d_asb_dual_slack_anchor);
     if (state->d_asb_dual_projection_input)
         cudaFree(state->d_asb_dual_projection_input);
-    if (state->d_asb_count)
-        cudaFree(state->d_asb_count);
 }
 
 static void asb_restore_anchor(pdhg_solver_state_t *state)
@@ -172,12 +169,15 @@ static void asb_restore_anchor(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaStreamSynchronize(state->stream));
 }
 
-static void
-asb_update_window(pdhg_solver_state_t *state, const pdhg_parameters_t *params, int *delta_add, int *delta_remove)
+// Queues the window update; the counts arrive with the next fetch_device_scalars.
+void active_set_boost_window_device(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
+    if (state->asb_phase == ASB_PHASE_OFF)
+        return;
     int now = state->total_count;
     int window_start = now - params->asb_window_iter;
-    CUDA_CHECK(cudaMemsetAsync(state->d_asb_count, 0, 4 * sizeof(int), state->stream));
+    int *delta_count = state->scalars_d->asb_window_delta;
+    CUDA_CHECK(cudaMemsetAsync(delta_count, 0, 4 * sizeof(int), state->stream));
     asb_var_window_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream>>>(
         state->variable_lower_bound,
         state->variable_upper_bound,
@@ -188,7 +188,7 @@ asb_update_window(pdhg_solver_state_t *state, const pdhg_parameters_t *params, i
         state->d_asb_col_mask,
         now,
         window_start,
-        state->d_asb_count,
+        delta_count,
         state->num_variables);
     asb_row_window_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream>>>(
         state->d_asb_dual_projection_input,
@@ -199,15 +199,8 @@ asb_update_window(pdhg_solver_state_t *state, const pdhg_parameters_t *params, i
         state->d_asb_row_mask,
         now,
         window_start,
-        state->d_asb_count,
+        delta_count,
         state->num_constraints);
-    int counts[4] = {0, 0, 0, 0};
-    CUDA_CHECK(cudaMemcpyAsync(counts, state->d_asb_count, 4 * sizeof(int), cudaMemcpyDeviceToHost, state->stream));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream));
-    state->asb_free_variables += counts[0] - counts[1];
-    state->asb_binding_constraints += counts[2] - counts[3];
-    *delta_add = counts[0] + counts[2];
-    *delta_remove = counts[1] + counts[3];
 }
 
 typedef enum
@@ -364,13 +357,14 @@ static double asb_refresh_target(pdhg_solver_state_t *state, const pdhg_paramete
     return state->step_size;
 }
 
-void active_set_boost_update_window(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
+void active_set_boost_window_host(pdhg_solver_state_t *state)
 {
     if (state->asb_phase == ASB_PHASE_OFF)
         return;
-    int delta_add = 0, delta_remove = 0;
-    asb_update_window(state, params, &delta_add, &delta_remove);
-    state->asb_changes_since_estimate += delta_add + delta_remove;
+    const int *counts = state->scalars_h->asb_window_delta;
+    state->asb_free_variables += counts[0] - counts[1];
+    state->asb_binding_constraints += counts[2] - counts[3];
+    state->asb_changes_since_estimate += counts[0] + counts[1] + counts[2] + counts[3];
 }
 
 asb_action_t active_set_boost_check(pdhg_solver_state_t *state, const pdhg_parameters_t *params)

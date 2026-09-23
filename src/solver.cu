@@ -154,8 +154,23 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         active_set_boost_init(state);
     }
 
+    bool detect_infeasibility =
+        params->infeasibility_detection && params->termination_criteria.eps_infeasible_relative > 0.0;
+    if (detect_infeasibility)
+    {
+        state->infeas_ctx = infeasibility_context_create(state);
+    }
+
+    // residuals of the starting point; also runs every check kernel once before the capture
     display_iteration_header(params);
-    compute_residual(state, params->optimality_norm);
+    compute_fixed_point_error_device(state);
+    compute_residual_device(state);
+    if (detect_infeasibility)
+    {
+        compute_infeasibility_device(state);
+    }
+    fetch_device_scalars(state);
+    compute_residual_host(state, params->optimality_norm);
     display_iteration_stats(state, params);
 
     state->start_time = clock();
@@ -163,13 +178,6 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
 
     cudaGraphExec_t graphExec = NULL;
     bool graph_created = false;
-
-    bool detect_infeasibility =
-        params->infeasibility_detection && params->termination_criteria.eps_infeasible_relative > 0.0;
-    if (detect_infeasibility)
-    {
-        state->infeas_ctx = infeasibility_context_create(state);
-    }
 
     while (state->total_count < params->termination_criteria.iteration_limit)
     {
@@ -200,6 +208,14 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
             compute_next_dual_solution(
                 state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
 
+            // termination check; the copy to the host stays outside the graph
+            compute_fixed_point_error_device(state);
+            compute_residual_device(state);
+            if (detect_infeasibility)
+            {
+                compute_infeasibility_device(state);
+            }
+
             // end CUDA graph capture
 
             cudaGraph_t graph;
@@ -209,14 +225,13 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
             graph_created = true;
         }
         CUDA_CHECK(cudaGraphLaunch(graphExec, state->stream));
+        state->inner_count += params->termination_evaluation_frequency;
+        state->total_count += params->termination_evaluation_frequency;
 
-        // Termination check, queued behind the graph while the GPU is still
-        // iterating, then one copy and synchronization.
-        compute_fixed_point_error_device(state);
-        compute_residual_device(state);
-        if (detect_infeasibility)
+        // iteration counts are kernel arguments, so the window update stays outside the graph
+        if (params->active_set_boost)
         {
-            compute_infeasibility_device(state);
+            active_set_boost_window_device(state, params);
         }
         fetch_device_scalars(state);
         compute_fixed_point_error_host(state);
@@ -231,12 +246,9 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
             state->primal_ray_certificate_error = INFINITY;
             state->dual_ray_certificate_error = INFINITY;
         }
-        state->inner_count += params->termination_evaluation_frequency;
-        state->total_count += params->termination_evaluation_frequency;
-
         if (params->active_set_boost)
         {
-            active_set_boost_update_window(state, params);
+            active_set_boost_window_host(state);
         }
 
         // Check Termination

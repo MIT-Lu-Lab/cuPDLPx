@@ -40,7 +40,9 @@ extern "C"
 
     void active_set_boost_free(pdhg_solver_state_t *state);
 
-    void active_set_boost_update_window(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
+    void active_set_boost_window_device(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
+
+    void active_set_boost_window_host(pdhg_solver_state_t *state);
 
     asb_action_t active_set_boost_check(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 

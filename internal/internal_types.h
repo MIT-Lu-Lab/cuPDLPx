@@ -78,6 +78,7 @@ typedef struct
     double restart_primal_sq;     // ||x - x_anchor||^2, the primal weight's PID input
     double restart_dual_sq;       // ||y - y_anchor||^2, the same on the dual side
     infeas_candidate_scalars_t infeas[INFEAS_NUM_CANDIDATES];
+    int asb_window_delta[4]; // active-set window: variables added, removed, constraints added, removed
 } device_scalars_t;
 
 // Private state of the infeasibility detection, defined in infeasibility.cu.
@@ -239,7 +240,6 @@ typedef struct
     double *d_asb_dual_anchor;
     double *d_asb_dual_slack_anchor;
     double *d_asb_dual_projection_input;
-    int *d_asb_count;
 
     cusparseHandle_t sparse_handle;
     cublasHandle_t blas_handle;
