@@ -226,6 +226,23 @@ static void spmm_buffer(
     CUDA_CHECK(cudaMalloc(buffer, size > 0 ? size : 16));
 }
 
+// One-time analysis of the matrix for the repeated products.
+static void spmm_preprocess(
+    cusparseHandle_t handle, cusparseSpMatDescr_t mat, cusparseDnMatDescr_t in, cusparseDnMatDescr_t out, void *buffer)
+{
+    CUSPARSE_CHECK(cusparseSpMM_preprocess(handle,
+                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                           CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                           &HOST_ONE,
+                                           mat,
+                                           in,
+                                           &HOST_ZERO,
+                                           out,
+                                           CUDA_R_64F,
+                                           CUSPARSE_SPMM_ALG_DEFAULT,
+                                           buffer));
+}
+
 static void
 spmm(cusparseHandle_t handle, cusparseSpMatDescr_t mat, cusparseDnMatDescr_t in, cusparseDnMatDescr_t out, void *buffer)
 {
@@ -296,6 +313,10 @@ infeas_ctx_t *infeasibility_context_create(pdhg_solver_state_t *state)
     spmm_buffer(state->sparse_handle, ctx->matAT, ctx->dnY, ctx->dnProdN, &ctx->buf_AT);
     spmm_buffer(state->sparse_handle, ctx->matAbsA, ctx->dnD, ctx->dnProdM, &ctx->buf_absA);
     spmm_buffer(state->sparse_handle, ctx->matAbsAT, ctx->dnY, ctx->dnProdN, &ctx->buf_absAT);
+    spmm_preprocess(state->sparse_handle, ctx->matA, ctx->dnD, ctx->dnProdM, ctx->buf_A);
+    spmm_preprocess(state->sparse_handle, ctx->matAT, ctx->dnY, ctx->dnProdN, ctx->buf_AT);
+    spmm_preprocess(state->sparse_handle, ctx->matAbsA, ctx->dnD, ctx->dnProdM, ctx->buf_absA);
+    spmm_preprocess(state->sparse_handle, ctx->matAbsAT, ctx->dnY, ctx->dnProdN, ctx->buf_absAT);
     return ctx;
 }
 

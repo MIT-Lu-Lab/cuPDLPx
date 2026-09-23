@@ -865,6 +865,7 @@ static py::dict read_mps_py(const std::string &filename)
     {
         // release GIL during file parsing
         py::gil_scoped_release release;
+        cupdlpx_gpu_init_async();
         prob = read_mps_file(filename.c_str());
     }
     if (!prob)

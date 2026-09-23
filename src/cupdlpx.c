@@ -269,6 +269,7 @@ cupdlpx_result_t *solve_lp_problem(lp_problem_t *prob, const pdhg_parameters_t *
         fprintf(stderr, "[interface] solve_lp_problem: invalid arguments.\n");
         return NULL;
     }
+    cupdlpx_gpu_init_async();
 
     // prepare parameters: use defaults if not provided
     pdhg_parameters_t local_params;

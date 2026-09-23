@@ -42,6 +42,10 @@ extern "C"
     // parameter
     void set_default_parameters(pdhg_parameters_t *params);
 
+    /* Create the CUDA context in a background thread. solve_lp_problem calls
+       it; calling it before reading the problem overlaps the read as well. */
+    void cupdlpx_gpu_init_async(void);
+
     /* Return 0 if params are valid. Otherwise, return nonzero and write the first
        error to error_message when provided. */
     int cupdlpx_validate_parameters(const pdhg_parameters_t *params, char *error_message, size_t error_message_size);

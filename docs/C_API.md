@@ -40,6 +40,8 @@ cupdlpx_result_t* solve_lp_problem(
 - `prob`: An LP problem built with `create_LP_problem`. The solver may clean up the matrix (e.g., drop near-zero entries), so the struct must be mutable.
 - `params`: Solver parameters. If `NULL`, the solver will use default parameters.
 
+Optional: `cupdlpx_gpu_init_async()` creates the CUDA context in a background thread. `solve_lp_problem` calls it itself; calling it before building or reading the problem overlaps that work with the cold start.
+
 #### Example: Solving a Small LP
 ```c
 #include "cupdlpx.h"

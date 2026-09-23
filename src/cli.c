@@ -468,6 +468,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    cupdlpx_gpu_init_async();
     lp_problem_t *problem = read_mps_file(filename);
 
     if (problem == NULL)

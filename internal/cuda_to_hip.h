@@ -162,6 +162,7 @@ static inline const char *cublasGetStatusName(hipblasStatus_t status)
 #define cusparseDestroyDnMat hipsparseDestroyDnMat
 #define cusparseSpMM hipsparseSpMM
 #define cusparseSpMM_bufferSize hipsparseSpMM_bufferSize
+#define cusparseSpMM_preprocess hipsparseSpMM_preprocess
 #define CUSPARSE_ORDER_COL HIPSPARSE_ORDER_COL
 #define CUSPARSE_SPMM_ALG_DEFAULT HIPSPARSE_SPMM_ALG_DEFAULT
 #define cusparseCsr2cscEx2 hipsparseCsr2cscEx2

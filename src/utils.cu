@@ -14,10 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include "cupdlpx.h"
 #include "utils.h"
 #include <math.h>
+#include <mutex>
 #include <random>
 #include <string.h>
+#include <thread>
 
 #ifndef CUPDLPX_VERSION
 #define CUPDLPX_VERSION "unknown"
@@ -381,6 +384,14 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
         solver_state->last_restart_reason = reason;
     }
     return reason != NULL;
+}
+
+// The context is created once per process; a later CUDA call on any thread
+// waits for it inside the driver.
+void cupdlpx_gpu_init_async(void)
+{
+    static std::once_flag once;
+    std::call_once(once, [] { std::thread([] { cudaFree(0); }).detach(); });
 }
 
 void set_default_parameters(pdhg_parameters_t *params)
