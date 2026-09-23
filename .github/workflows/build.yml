@@ -90,7 +90,7 @@ jobs:
         run: |
           apt-get install -y --no-install-recommends \
             cmake ninja-build zlib1g-dev \
-            hipblas-dev hipsparse-dev hipcub-dev rocprim-dev
+            hipblas-dev hipsparse-dev hipcub-dev rocprim-dev rocthrust-dev
 
       # The ROCm apt packages don't add /opt/rocm/bin to PATH for non-interactive shells.
       - name: Add ROCm to PATH
