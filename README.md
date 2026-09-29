@@ -3,10 +3,11 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/release/MIT-Lu-Lab/cuPDLPx.svg)](https://github.com/MIT-Lu-Lab/cuPDLPx/releases)
 [![PyPI version](https://badge.fury.io/py/cupdlpx.svg)](https://pypi.org/project/cupdlpx/)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://mit-lu-lab.github.io/cuPDLPx/)
 [![arXiv](https://img.shields.io/badge/arXiv-2407.16144-B31B1B.svg)](https://arxiv.org/abs/2407.16144)
 [![arXiv](https://img.shields.io/badge/arXiv-2507.14051-B31B1B.svg)](https://arxiv.org/abs/2507.14051)
 
-**cuPDLPx** is a GPU-accelerated linear programming solver based on a restarted Halpern PDHG method specifically tailored for GPU architectures. It incorporates  a Halpern update scheme, an adaptive restart scheme, and a PID-controlled primal weight, resulting in substantial empirical improvements over its predecessor, **[cuPDLP](https://github.com/jinwen-yang/cuPDLP.jl)**, on standard LP benchmark suites.
+**cuPDLPx** is a GPU-accelerated linear programming solver based on a restarted Halpern PDHG method specifically tailored for GPU architectures. It incorporates a Halpern update scheme, an adaptive restart scheme, and a PID-controlled primal weight, resulting in substantial empirical improvements over its predecessor, **[cuPDLP](https://github.com/jinwen-yang/cuPDLP.jl)**, on standard LP benchmark suites.
 
 cuPDLPx solves linear programs of the form
 ```math
@@ -23,137 +24,18 @@ Our work is presented in two papers:
 
 * **Theoretical Paper:** [Restarted Halpern PDHG for Linear Programming](https://arxiv.org/pdf/2407.16144) provides the mathematical foundation for our method.
 
-## Installation
+For installation instructions, examples, solver parameters, and algorithm details, see the [cuPDLPx documentation](https://mit-lu-lab.github.io/cuPDLPx/).
 
-### Requirements
-* **GPU:** NVIDIA GPU with CUDA 12.4+, or AMD GPU with ROCm 7.2+.
-* **Build Tools:** CMake (≥ 3.20), GCC, and NVCC (CUDA) or hipcc (ROCm).
+## Interfaces
 
-> **SpMV backend** is selected automatically at compile time based on cuSPARSE version:
-> - `cusparseSpMV` — CUDA 12.4 – 13.2 (cuSPARSE < 12.8.1)
-> - `cusparseSpMVOp` — CUDA 13.3+ (cuSPARSE ≥ 12.8.1)
->
-> On AMD GPUs the solver uses the `hipsparseSpMV` backend via hipSPARSE.
+| Interface | Description |
+| --- | --- |
+| [Command line](https://mit-lu-lab.github.io/cuPDLPx/guides/command-line/) | Solve MPS files from a shell. |
+| [Python](https://mit-lu-lab.github.io/cuPDLPx/guides/python/) | Build and solve LPs with [NumPy](https://numpy.org/doc/stable/) and [SciPy](https://docs.scipy.org/doc/scipy/). |
+| [Julia](https://mit-lu-lab.github.io/cuPDLPx/guides/julia/) | Use cuPDLPx through [JuMP](https://jump.dev/JuMP.jl/stable/) and [MathOptInterface](https://jump.dev/MathOptInterface.jl/stable/). |
+| [C](https://mit-lu-lab.github.io/cuPDLPx/guides/c-api/) | Embed cuPDLPx in native applications. |
 
-### Build from Source
-Clone the repository and compile the project using CMake.
-```bash
-git clone git@github.com:MIT-Lu-Lab/cuPDLPx.git
-cd cuPDLPx
-cmake -B build
-cmake --build build --clean-first
-```
-This will create the solver binary at `./build/cupdlpx`.
-
-#### Building for AMD GPUs (ROCm/HIP)
-To target AMD GPUs, configure with `-DUSE_HIP=ON` and select the GPU
-architecture with `-DCMAKE_HIP_ARCHITECTURES`. The CUDA sources are compiled
-as HIP and the cuBLAS/cuSPARSE/CUB calls are mapped to hipBLAS/hipSPARSE/hipCUB.
-```bash
-cmake -B build -DUSE_HIP=ON -DCMAKE_HIP_ARCHITECTURES=gfx90a -DCMAKE_PREFIX_PATH=/opt/rocm
-cmake --build build --clean-first
-```
-Set `CMAKE_HIP_ARCHITECTURES` to match your GPU (for example `gfx90a` for
-MI200, `gfx1100` for RDNA3 desktop, or `gfx1201` for RDNA4). If the ROCm
-install is not on CMake's default search path, point `-DCMAKE_PREFIX_PATH` at
-it (e.g. `/opt/rocm`) so `find_package` can locate hip, hipBLAS, hipSPARSE,
-and hipCUB. The resulting `./build/cupdlpx` binary is used exactly as in the
-CUDA build.
-
-#### Verifying the Installation
-Run a small test problem to confirm that the solver was built correctly.
-```bash
-# 1. Download a test instance from the MIPLIB library
-wget -P test/ https://miplib.zib.de/WebData/instances/2club200v15p5scn.mps.gz
-
-# 2. Solve the problem and write output to the current directory (.)
-./build/cupdlpx test/2club200v15p5scn.mps.gz test/
-```
-If the solver runs and creates output files, your installation is successful.
-
-### Python Package Installation
-To use cuPDLPx in Python, you can install the pre-built package `cupdlpx` directly from PyPI:
-```bash
-pip install cupdlpx
-```
-Or build from source:
-```
-git clone https://github.com/MIT-Lu-Lab/cuPDLPx.git
-cd cuPDLPx
-pip install .
-```
-
-## Usage & Interfaces
-### Command-line Interface
-
-After building the project, the `./build/cupdlpx` binary can be invoked from the command line as follows:
-
-```bash
-./build/cupdlpx [OPTIONS] <mps_file> <output_directory>
-```
-
-#### Arguments
-- `<mps_file>`: The path to the input linear programming problem. Both plain (`.mps`) and gzipped (`.mps.gz`) files are supported.
-- `<output_directory>`: The directory where the output files will be saved.
-
-#### Solver Options
-
-| Option | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `-h`, `--help` | `flag` | Display the help message. | N/A |
-| `-v`, `--verbose` | `flag` | Verbose logging (enabled by default). | `true` |
-| `-q`, `--quiet` | `flag` | Disable verbose logging. | `false` |
-| `--debug` | `flag` | Developer diagnostics (implies verbose). | `false` |
-| `--time_limit` | `double` | Time limit in seconds. | `3600.0` |
-| `--iter_limit` | `int` | Iteration limit. | `2147483647` |
-| `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf` | `l2` |
-| `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
-| `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
-| `--geo_mean_iter` | `int` | Iterations of geometric-mean scaling | `12` |
-| `--l_inf_ruiz_iter` | `int` | Iterations of L-inf Ruiz rescaling| `10` |
-| `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling | `enabled` |
-| `--pock_chambolle_alpha` | `float` | Value for Pock-Chambolle alpha | `1.0` |
-| `--no_bound_obj_rescaling` | `flag` | Disable bound objective rescaling | `enabled` |
-| `--eval_freq` | `int` | Termination evaluation frequency | `200` |
-| `--sv_max_iter` | `int` | Max iterations for singular value estimation | `5000` |
-| `--sv_tol` | `float` | Tolerance for singular value estimation | `1e-4` |
-| `--no_presolve` | `flag` | Disable presolve | `enabled` |
-| `-f`,`--feasibility_polishing` |`flag` | Run the polishing loop | `false` |
-| `--eps_feas_polish` | `double` | Relative tolerance for polishing | `1e-6`  |
-| `--no_active_set_boost` | `flag` | Disable the active-set stepsize boost | `enabled` |
-| `--asb_activation_tol` | `double` | Residual threshold at which the boost activates | `1e-4` |
-| `--asb_window_iter` | `int` | Number of recent iterations used to identify the active set | `10000` |
-| `--asb_safety_factor` | `double` | Boosted step = factor / estimated singular value | `0.9` |
-| `--asb_max_reverts` | `int` | Divergences tolerated before the boost turns off; a diverged step is always reverted | `2` |
-| `--asb_min_raise_ratio` | `double` | Minimum ratio for a step increase | `1.1` |
-| `--asb_reestimate_change_ratio` | `double` | Fraction of the active set that must change before re-estimating | `0.01` |
-| `--asb_constraint_tol` | `double` | Tolerance for treating a constraint as binding | `1e-8` |
-| `--asb_variable_tol` | `double` | Tolerance for treating a variable as at its bound | `1e-8` |
-| `--asb_divergence_ceiling_ratio` | `double` | Step ceiling after a revert, relative to the diverged step | `0.7` |
-| `--asb_divergence_margin` | `double` | Allowed fixed-point error increase before a revert | `0.05` |
-
-The active-set boost enlarges the stepsize late in the solve, based on the constraints and bounds identified as active.
-
-#### Output Files
-The solver generates three text files in the specified <output_directory>. The filenames are derived from the input file's basename. For an input `INSTANCE.mps.gz`, the output will be:
-```
-<output_directory>/
-├── INSTANCE_summary.txt          # Statistics, timings, and termination status
-├── INSTANCE_primal_solution.txt  # Primal solution vector
-└── INSTANCE_dual_solution.txt    # Dual solution vector
-```
-
-### Python Interface
-The `cupdlpx` Python package supports building and solving LPs directly with `NumPy` and `SciPy`.
-Documentation and examples are available in the [Python API Guide](python/README.md).
-
-### Julia Interface
-`CuPDLPx.jl` provides a `JuMP`/`MathOptInterface` wrapper for cuPDLPx, enabling cuPDLPx to be used as a solver backend for `JuMP` models. Documentation and examples are available at: [CuPDLPx.jl](https://github.com/MIT-Lu-Lab/CuPDLPx.jl).
-
-### C Interface
-The public C API is defined in header file [`include/cupdlpx.h`](include/cupdlpx.h). A detailed description with usage examples can be found in the [C API Guide](docs/C_API.md).
-
-## Reference
+## References
 If you use cuPDLPx or the ideas in your work, please cite the source below.
 
 ```bibtex
