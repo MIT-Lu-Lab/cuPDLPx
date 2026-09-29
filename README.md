@@ -105,7 +105,7 @@ After building the project, the `./build/cupdlpx` binary can be invoked from the
 | `-q`, `--quiet` | `flag` | Disable verbose logging. | `false` |
 | `--debug` | `flag` | Developer diagnostics (implies verbose). | `false` |
 | `--time_limit` | `double` | Time limit in seconds. | `3600.0` |
-| `--iter_limit` | `int` | Iteration limit. | `2147483647` |
+| `--iter_limit` | `int` | Iteration limit. | $2^{31}-1$ |
 | `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf` | `l2` |
 | `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
@@ -145,13 +145,13 @@ The solver generates three text files in the specified <output_directory>. The f
 
 ### Python Interface
 The `cupdlpx` Python package supports building and solving LPs directly with `NumPy` and `SciPy`.
-Documentation and examples are available in the [Python API Guide](python/README.md).
+Documentation and examples are available in the [Python API Guide](docs/guides/python.md).
 
 ### Julia Interface
 `CuPDLPx.jl` provides a `JuMP`/`MathOptInterface` wrapper for cuPDLPx, enabling cuPDLPx to be used as a solver backend for `JuMP` models. Documentation and examples are available at: [CuPDLPx.jl](https://github.com/MIT-Lu-Lab/CuPDLPx.jl).
 
 ### C Interface
-The public C API is defined in header file [`include/cupdlpx.h`](include/cupdlpx.h). A detailed description with usage examples can be found in the [C API Guide](docs/C_API.md).
+The public C API is defined in header file [`include/cupdlpx.h`](include/cupdlpx.h). A detailed description with usage examples can be found in the [C API Guide](docs/guides/c-api.md).
 
 ## Reference
 If you use cuPDLPx or the ideas in your work, please cite the source below.

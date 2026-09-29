@@ -1,0 +1,540 @@
+/* Small cuPDLPx-specific adjustments to the Modern theme. */
+.md-header__button.md-logo {
+  display: none;
+}
+
+/* Documentation-first landing page, inspired by Zensical's home layout. */
+body:has(.cupdlpx-home) {
+  --cupdlpx-home-chrome-height: 4.8rem;
+  --cupdlpx-ink-strong: hsl(218 40% 12%);
+  --cupdlpx-ink: hsl(218 28% 24%);
+  --cupdlpx-ink-muted: hsl(218 18% 40%);
+  --cupdlpx-space-xs: 0.25rem;
+  --cupdlpx-space-sm: 0.5rem;
+  --cupdlpx-space-md: 1rem;
+  --cupdlpx-space-lg: 1.5rem;
+  --cupdlpx-space-xl: 2rem;
+  --cupdlpx-space-2xl: 3rem;
+  --cupdlpx-space-3xl: 4rem;
+  --md-typeset-a-color: #165bb8;
+  background: var(--md-default-bg-color);
+}
+
+body[data-md-color-scheme="slate"]:has(.cupdlpx-home) {
+  --cupdlpx-ink-strong: hsl(215 25% 94%);
+  --cupdlpx-ink: hsl(215 20% 84%);
+  --cupdlpx-ink-muted: hsl(215 14% 66%);
+  --md-typeset-a-color: #82b1ff;
+}
+
+body:has(.cupdlpx-home) .md-header:not(.md-header--shadow),
+body:has(.cupdlpx-home) .md-tabs {
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--cupdlpx-ink-strong);
+}
+
+body:has(.cupdlpx-home) .md-tabs__link {
+  color: var(--cupdlpx-ink-muted);
+}
+
+body:has(.cupdlpx-home) .md-tabs__item--active .md-tabs__link,
+body:has(.cupdlpx-home) .md-tabs__link:hover {
+  color: var(--cupdlpx-ink-strong);
+}
+
+body:has(.cupdlpx-home) .md-main__inner {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
+body:has(.cupdlpx-home) .md-content {
+  max-width: none;
+}
+
+body:has(.cupdlpx-home) .md-content__inner {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
+body:has(.cupdlpx-home) .md-content__button {
+  display: none;
+}
+
+/* The homepage has its own calls to action, so omit the next-page prompt. */
+body:has(.cupdlpx-home) .md-footer__inner {
+  display: none;
+}
+
+.md-typeset .cupdlpx-home {
+  color: var(--cupdlpx-ink);
+}
+
+.md-typeset .cupdlpx-home a {
+  color: var(--md-typeset-a-color);
+}
+
+.md-typeset .cupdlpx-home__hero {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  margin: 0;
+  min-height: calc(80svh - var(--cupdlpx-home-chrome-height));
+  padding: clamp(
+      var(--cupdlpx-space-2xl),
+      5vh,
+      var(--cupdlpx-space-3xl)
+    )
+    0 var(--cupdlpx-space-3xl);
+}
+
+.md-typeset .cupdlpx-home__hero-inner {
+  margin: 0 auto;
+  max-width: 61rem;
+  width: calc(100% - 3rem);
+}
+
+.md-typeset .cupdlpx-home__hero h1 {
+  color: var(--cupdlpx-ink-strong);
+  font-size: clamp(2.25rem, 3.5vw, 3.2rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+  margin: 0;
+  max-width: none;
+  text-wrap: balance;
+  white-space: normal;
+}
+
+.md-typeset .cupdlpx-home .headerlink {
+  display: none;
+}
+
+.md-typeset .cupdlpx-home__hero-inner > p {
+  color: var(--cupdlpx-ink-muted);
+  font-size: clamp(0.95rem, 1.1vw, 1.05rem);
+  line-height: 1.55;
+  margin: var(--cupdlpx-space-lg) 0 0;
+  max-width: none;
+}
+
+.md-typeset .cupdlpx-home__tagline {
+  white-space: nowrap;
+}
+
+.md-typeset .cupdlpx-home__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cupdlpx-space-md);
+  margin: var(--cupdlpx-space-xl) 0 0;
+}
+
+.md-typeset .cupdlpx-home__actions .md-button {
+  border: 0;
+  border-radius: 0.25rem;
+  color: var(--cupdlpx-ink);
+  margin: 0;
+  padding: var(--cupdlpx-space-sm) var(--cupdlpx-space-md);
+  text-decoration: none;
+}
+
+.md-typeset .cupdlpx-home__actions .md-button--primary {
+  background: var(--cupdlpx-ink-strong);
+  color: var(--md-default-bg-color);
+}
+
+.md-typeset .cupdlpx-home__actions .md-button--primary:hover {
+  background: var(--cupdlpx-ink);
+  color: var(--md-default-bg-color);
+}
+
+.md-typeset .cupdlpx-home__actions .md-button:focus-visible {
+  outline: 0.15rem solid var(--md-typeset-a-color);
+  outline-offset: var(--cupdlpx-space-xs);
+}
+
+.md-typeset .cupdlpx-home__actions .md-button:not(.md-button--primary) {
+  background: transparent;
+  padding-inline: var(--cupdlpx-space-sm);
+}
+
+.md-typeset
+  .cupdlpx-home__actions
+  .md-button:not(.md-button--primary)::after {
+  content: " →";
+  display: inline-block;
+  margin-left: var(--cupdlpx-space-xs);
+  transition: transform 150ms ease;
+}
+
+.md-typeset
+  .cupdlpx-home__actions
+  .md-button:not(.md-button--primary):hover {
+  color: var(--md-typeset-a-color);
+}
+
+.md-typeset
+  .cupdlpx-home__actions
+  .md-button:not(.md-button--primary):hover::after {
+  transform: translateX(0.15rem);
+}
+
+@media screen and (max-width: 76.2344em) {
+  body:has(.cupdlpx-home) {
+    --cupdlpx-home-chrome-height: 2.4rem;
+  }
+}
+
+@media screen and (max-width: 44.9844em) {
+  .md-typeset .cupdlpx-home__tagline {
+    white-space: normal;
+  }
+
+  .md-typeset .cupdlpx-home__hero {
+    padding-block: var(--cupdlpx-space-2xl);
+  }
+}
+
+/* KaTeX auto-render wraps display math in a span; avoid extra line boxes. */
+.md-typeset div.arithmatex > span {
+  display: block;
+}
+
+.md-typeset div.arithmatex .katex-display {
+  margin: 0.4em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.05em;
+}
+
+.md-typeset .spmv-highlight,
+.md-typeset .vector-operation-highlight {
+  color: #c62828;
+  font-weight: 700;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .spmv-highlight,
+[data-md-color-scheme="slate"] .md-typeset .vector-operation-highlight {
+  color: #ff6b6b;
+}
+
+/* Keep model argument names readable as single identifiers. */
+.md-typeset .model-arguments td:first-child code {
+  white-space: nowrap;
+}
+
+.md-typeset .parameter-reference td:first-child code {
+  background-color: rgb(21 101 192 / 8%);
+  color: #1565c0;
+  font-weight: 600;
+}
+
+[data-md-color-scheme="slate"]
+  .md-typeset .parameter-reference td:first-child code {
+  background-color: rgb(100 181 246 / 12%);
+  color: #64b5f6;
+}
+
+.md-typeset .parameter-reference th,
+.md-typeset .parameter-reference td {
+  padding: 0.75em 0.9em;
+  vertical-align: top;
+}
+
+.md-typeset .parameter-reference .md-typeset__table {
+  display: block;
+}
+
+.md-typeset .parameter-reference table {
+  display: table;
+  width: 100%;
+}
+
+.md-typeset .parameter-reference th:first-child,
+.md-typeset .parameter-reference td:first-child {
+  width: 28%;
+}
+
+.md-typeset .parameter-reference th:nth-child(2),
+.md-typeset .parameter-reference td:nth-child(2) {
+  width: 10%;
+}
+
+.md-typeset .parameter-reference th:nth-child(3),
+.md-typeset .parameter-reference td:nth-child(3) {
+  width: 16%;
+}
+
+.md-typeset .parameter-reference th:last-child,
+.md-typeset .parameter-reference td:last-child {
+  width: 46%;
+}
+
+.md-typeset .parameter-reference th,
+.md-typeset .parameter-reference td:nth-child(2),
+.md-typeset .parameter-reference td code {
+  white-space: nowrap;
+}
+
+@media screen and (max-width: 59.9844em) {
+  .md-typeset :is(.parameter-reference, .status-guide) .md-typeset__table {
+    display: block;
+    width: 100%;
+  }
+
+  .md-typeset .status-guide table,
+  .md-typeset .status-guide tbody,
+  .md-typeset .parameter-reference table,
+  .md-typeset .parameter-reference tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .md-typeset :is(.parameter-reference, .status-guide) thead {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    display: block;
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .md-typeset :is(.parameter-reference, .status-guide) tbody tr {
+    border-top: 0.05rem solid var(--md-typeset-table-color);
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 0.75rem;
+  }
+
+  .md-typeset .status-guide tbody tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .md-typeset :is(.parameter-reference, .status-guide) tbody tr:first-child {
+    border-top: 0;
+  }
+
+  .md-typeset .status-guide table td,
+  .md-typeset .parameter-reference td,
+  .md-typeset .parameter-reference td:first-child,
+  .md-typeset .parameter-reference td:nth-child(2),
+  .md-typeset .parameter-reference td:nth-child(3),
+  .md-typeset .parameter-reference td:last-child {
+    border-top: 0;
+    display: block;
+    padding: 0;
+    white-space: normal;
+    width: auto;
+  }
+
+  .md-typeset .parameter-reference td code {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .md-typeset .parameter-reference td:first-child,
+  .md-typeset .parameter-reference td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .md-typeset .status-guide td:first-child {
+    font-size: 1.1em;
+    font-weight: 700;
+  }
+
+  .md-typeset :is(.parameter-reference, .status-guide) td::before {
+    color: var(--md-default-fg-color--light);
+    display: block;
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+    line-height: 1.4;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+  }
+
+  .md-typeset .parameter-reference td:first-child::before {
+    content: "Parameter";
+  }
+
+  .md-typeset .parameter-reference td:nth-child(2)::before {
+    content: "Default";
+  }
+
+  .md-typeset .parameter-reference td:nth-child(3)::before {
+    content: "Type and range";
+  }
+
+  .md-typeset .parameter-reference td:last-child::before {
+    content: "Description";
+  }
+
+  .md-typeset .status-guide td:nth-child(2)::before {
+    content: "Meaning";
+  }
+
+  .md-typeset .status-guide td:last-child::before {
+    content: "Next step";
+  }
+}
+
+.md-typeset .status-reference td code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* Paper-style pseudocode with live, searchable KaTeX formulas. */
+.md-typeset .latex-algorithm {
+  border-block: 0.12rem solid var(--md-default-fg-color);
+  margin: 1.25rem 0;
+}
+
+.md-typeset .latex-algorithm__caption {
+  border-bottom: 0.05rem solid var(--md-default-fg-color--lightest);
+  padding: 0.45rem 0.7rem;
+}
+
+.md-typeset .latex-algorithm__input {
+  border-bottom: 0.05rem solid var(--md-default-fg-color--lightest);
+  padding: 0.45rem 0.7rem;
+}
+
+.md-typeset .latex-algorithm__lines {
+  counter-reset: algorithm-line;
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.md-typeset .latex-algorithm__lines > li {
+  counter-increment: algorithm-line;
+  line-height: 1.55;
+  margin: 0;
+  padding: 0.18rem 0.8rem 0.18rem 2.8rem;
+  position: relative;
+}
+
+.md-typeset .latex-algorithm__lines > li::before {
+  color: var(--md-default-fg-color--light);
+  content: counter(algorithm-line);
+  font-variant-numeric: tabular-nums;
+  left: 0.45rem;
+  position: absolute;
+  text-align: right;
+  width: 1.45rem;
+}
+
+.md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-1 {
+  padding-left: 4rem;
+}
+
+.md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-1::after,
+.md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-2::after {
+  border-left: 0.05rem solid var(--md-default-fg-color--lightest);
+  bottom: 0;
+  content: "";
+  left: 2.75rem;
+  position: absolute;
+  top: 0;
+}
+
+.md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-2 {
+  padding-left: 5.2rem;
+}
+
+.md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-2::after {
+  border-right: 0.05rem solid var(--md-default-fg-color--lightest);
+  width: 1.25rem;
+}
+
+.md-typeset .latex-algorithm__keyword {
+  font-weight: 700;
+}
+
+.md-typeset .latex-algorithm__operation {
+  background: color-mix(
+    in srgb,
+    var(--md-accent-fg-color) 7%,
+    var(--md-default-bg-color)
+  );
+  border-left: 0.16rem solid var(--md-accent-fg-color);
+  border-radius: 0.2rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.md-typeset .latex-algorithm__operation--check {
+  background: color-mix(in srgb, #2e7d32 7%, var(--md-default-bg-color));
+  border-left-color: #2e7d32;
+}
+
+.md-typeset .latex-algorithm__operation--restart {
+  background: color-mix(in srgb, #ed6c02 7%, var(--md-default-bg-color));
+  border-left-color: #ed6c02;
+}
+
+.md-typeset .latex-algorithm__statement {
+  margin-top: 0.12rem;
+}
+
+.md-typeset .latex-algorithm__statement--indent {
+  padding-left: 1.4rem;
+}
+
+[data-md-color-scheme="slate"]
+  .md-typeset
+  .latex-algorithm__operation--check {
+  background: color-mix(in srgb, #66bb6a 10%, var(--md-default-bg-color));
+  border-left-color: #66bb6a;
+}
+
+[data-md-color-scheme="slate"]
+  .md-typeset
+  .latex-algorithm__operation--restart {
+  background: color-mix(in srgb, #ffb74d 10%, var(--md-default-bg-color));
+  border-left-color: #ffb74d;
+}
+
+.md-typeset .latex-algorithm .katex-display {
+  margin: 0.3rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.05rem;
+}
+
+.md-typeset .latex-algorithm .katex-display > .katex {
+  font-size: 1em;
+}
+
+@media screen and (max-width: 44.9844em) {
+  .md-typeset .latex-algorithm__lines > li {
+    padding-left: 2.35rem;
+    padding-right: 0.35rem;
+  }
+
+  .md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-1 {
+    padding-left: 3rem;
+  }
+
+  .md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-1::after,
+  .md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-2::after {
+    left: 2.35rem;
+  }
+
+  .md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-2 {
+    padding-left: 3.75rem;
+  }
+
+  .md-typeset .latex-algorithm__lines > li.latex-algorithm__indent-2::after {
+    width: 0.75rem;
+  }
+
+  .md-typeset .latex-algorithm .katex-display > .katex {
+    font-size: 0.88em;
+  }
+}
