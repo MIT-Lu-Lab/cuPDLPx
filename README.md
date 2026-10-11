@@ -30,10 +30,10 @@ For installation instructions, examples, solver parameters, and algorithm detail
 
 | Interface | Description |
 | --- | --- |
-| [Command line](https://mit-lu-lab.github.io/cuPDLPx/guides/command-line/) | Solve MPS files from a shell. |
-| [Python](https://mit-lu-lab.github.io/cuPDLPx/guides/python/) | Build and solve LPs with [NumPy](https://numpy.org/doc/stable/) and [SciPy](https://docs.scipy.org/doc/scipy/). |
-| [Julia](https://mit-lu-lab.github.io/cuPDLPx/guides/julia/) | Use cuPDLPx through [JuMP](https://jump.dev/JuMP.jl/stable/) and [MathOptInterface](https://jump.dev/MathOptInterface.jl/stable/). |
-| [C](https://mit-lu-lab.github.io/cuPDLPx/guides/c-api/) | Embed cuPDLPx in native applications. |
+| [Command line](https://mit-lu-lab.github.io/cuPDLPx/guides/command-line.html) | Solve MPS files from a shell. |
+| [Python](https://mit-lu-lab.github.io/cuPDLPx/guides/python.html) | Build and solve LPs with [NumPy](https://numpy.org/doc/stable/) and [SciPy](https://docs.scipy.org/doc/scipy/). |
+| [Julia](https://mit-lu-lab.github.io/cuPDLPx/guides/julia.html) | Use cuPDLPx through [JuMP](https://jump.dev/JuMP.jl/stable/) and [MathOptInterface](https://jump.dev/MathOptInterface.jl/stable/). |
+| [C](https://mit-lu-lab.github.io/cuPDLPx/guides/c-api.html) | Embed cuPDLPx in native applications. |
 
 ## References
 If you use cuPDLPx or the ideas in your work, please cite the source below.
