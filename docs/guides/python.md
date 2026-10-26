@@ -47,7 +47,7 @@ cd cuPDLPx
 python -m pip install .
 ```
 
-Building from source requires CMake 3.21+ and a
+Building from source requires CMake 3.23+ and a
 [CUDA or ROCm toolchain](command-line.md#build-requirements). Pip may build
 the package locally if no compatible wheel is available.
 

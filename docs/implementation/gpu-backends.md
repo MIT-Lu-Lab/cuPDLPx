@@ -38,8 +38,8 @@ GPU.
 
 ### ROCm
 
-HIP builds require a target architecture. The default is `gfx90a`; override it
-for other devices:
+HIP builds use CMake's GPU architecture detection by default. Set the target
+architecture explicitly for headless builds or when targeting another device:
 
 ```bash
 cmake -B build \

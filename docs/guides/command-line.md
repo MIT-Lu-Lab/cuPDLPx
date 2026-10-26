@@ -13,7 +13,7 @@ Build it from source with the C libraries.
 | Component | CUDA build | ROCm build |
 | --- | --- | --- |
 | Compiler | GCC and NVCC | GCC and `hipcc` |
-| Build system | CMake 3.20+ | CMake 3.20+ |
+| Build system | CMake 3.23+ | CMake 3.23+ |
 
 See [hardware requirements](../getting-started/index.md#hardware-requirements)
 for supported GPUs and required CUDA or ROCm versions.

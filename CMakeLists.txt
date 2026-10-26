@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # ROOT CMakeLists.txt for cuPDLPx (Unified Build System)
 # -----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.23)
 
 # HIP/ROCm support option (must be set before project() to influence language detection)
 option(USE_HIP "Build with HIP for AMD GPUs" OFF)
@@ -57,14 +57,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-if(USE_HIP)
-  # HIP architecture configuration
-  # Default to gfx90a if not specified; can override with -DCMAKE_HIP_ARCHITECTURES=gfx1100, etc.
-  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
-    set(CMAKE_HIP_ARCHITECTURES "gfx90a")
-  endif()
-endif()
-
 # -----------------------------------------------------------------------------
 # [ELEGANT DESIGN] Target-based Compile Flags
 # -----------------------------------------------------------------------------
@@ -77,8 +69,7 @@ endif()
 
 if(MSVC)
     target_compile_options(cupdlpx_compile_flags INTERFACE
-        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/O2 /W4 /Zi>
-        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/O2>
+        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/W4 /Zi>
         $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
         $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zi>
     )
@@ -97,7 +88,7 @@ if(MSVC)
         strdup=_strdup
     )
 else()
-    target_compile_options(cupdlpx_compile_flags INTERFACE -O3 -Wall -Wextra -g)
+    target_compile_options(cupdlpx_compile_flags INTERFACE -Wall -Wextra -g)
     if(NOT WIN32)
         target_compile_options(cupdlpx_compile_flags INTERFACE -fPIC)
     endif()
@@ -116,6 +107,7 @@ endif()
 # CONTROL OPTIONS
 # -----------------------------------------------------------------------------
 include(CMakeDependentOption)
+include(GNUInstallDirs)
 
 option(CUPDLPX_BUILD_STATIC_LIB "Build the cuPDLPx static library" ON)
 option(CUPDLPX_BUILD_SHARED_LIB "Build the cuPDLPx shared library" ON)
@@ -204,8 +196,18 @@ target_compile_definitions(cupdlpx_compile_flags INTERFACE PSLP_VERSION="${PSLP_
 # -----------------------------------------------------------------------------
 # TARGET DEFINITIONS
 # -----------------------------------------------------------------------------
-file(GLOB C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
-file(GLOB CU_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
+if(UNIX)
+  if(APPLE)
+    set(CUPDLPX_RPATH_ORIGIN "@loader_path")
+  else()
+    set(CUPDLPX_RPATH_ORIGIN "$ORIGIN")
+  endif()
+  file(RELATIVE_PATH CUPDLPX_LIBDIR_FROM_BINDIR
+    "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_LIBDIR}")
+endif()
+
+file(GLOB C_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
+file(GLOB CU_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
 list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/cli.c")
 
 set(CORE_INCLUDE_DIRS
@@ -275,6 +277,9 @@ if(CUPDLPX_BUILD_SHARED_LIB)
         OUTPUT_NAME "cupdlpx"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
+    if(UNIX)
+      set_target_properties(cupdlpx_shared PROPERTIES INSTALL_RPATH "${CUPDLPX_RPATH_ORIGIN}")
+    endif()
     if(USE_HIP)
       set_target_properties(cupdlpx_shared PROPERTIES
         HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}"
@@ -300,6 +305,10 @@ if(CUPDLPX_BUILD_CLI)
         OUTPUT_NAME "cupdlpx"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
+    if(UNIX)
+      set_target_properties(cupdlpx_cli PROPERTIES
+        INSTALL_RPATH "${CUPDLPX_RPATH_ORIGIN}/${CUPDLPX_LIBDIR_FROM_BINDIR}")
+    endif()
     if(NOT USE_HIP)
       set_target_properties(cupdlpx_cli PROPERTIES
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -344,17 +353,27 @@ if (CUPDLPX_BUILD_PYTHON)
 endif()
 
 # 6. Install Targets
+# PSLP v0.0.11 installs only PSLP_API.h, but the public cuPDLPx types expose
+# PresolveStats and PSLP_API.h includes PSLP_status.h.
+install(DIRECTORY "${pslp_SOURCE_DIR}/include/PSLP/"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/PSLP
+    FILES_MATCHING PATTERN "*.h"
+)
+
 if (CUPDLPX_BUILD_PYTHON)
-    install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
 else()
     if(TARGET cupdlpx_core)
-        install(TARGETS cupdlpx_core ARCHIVE DESTINATION lib)
+        install(TARGETS cupdlpx_core ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     endif()
     if(TARGET cupdlpx_shared)
-        install(TARGETS cupdlpx_shared LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+        install(TARGETS cupdlpx_shared
+          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
     if(TARGET cupdlpx_cli)
-        install(TARGETS cupdlpx_cli RUNTIME DESTINATION bin)
+        install(TARGETS cupdlpx_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
-    install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
 endif()

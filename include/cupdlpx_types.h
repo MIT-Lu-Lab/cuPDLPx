@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "PSLP_stats.h"
+#include "PSLP/PSLP_stats.h"
 #include <stdbool.h>
 #include <stdlib.h>
 

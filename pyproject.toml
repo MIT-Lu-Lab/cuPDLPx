@@ -19,7 +19,7 @@ dependencies = ["numpy>=1.21", "scipy>=1.8"]
 
 [tool.scikit-build]
 build-dir = "build/{wheel_tag}"
-cmake.version = ">=3.21"
+cmake.version = ">=3.23"
 cmake.build-type = "Release"
 wheel.packages = ["python/cupdlpx"]
 sdist.include = [
