@@ -29,6 +29,7 @@ jobs:
 
       - name: CUDA info
         run: |
+          cmake --version
           echo "Installed cuda version is: ${{ steps.cuda-toolkit.outputs.cuda }}"
           echo "Cuda install location: ${{ steps.cuda-toolkit.outputs.CUDA_PATH }}"
           nvcc -V
@@ -89,8 +90,13 @@ jobs:
       - name: Install build deps
         run: |
           apt-get install -y --no-install-recommends \
-            cmake ninja-build zlib1g-dev \
+            ninja-build zlib1g-dev \
             hipblas-dev hipsparse-dev hipcub-dev rocprim-dev rocthrust-dev
+
+      - name: Set up CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.23.5'
 
       # The ROCm apt packages don't add /opt/rocm/bin to PATH for non-interactive shells.
       - name: Add ROCm to PATH
@@ -98,6 +104,7 @@ jobs:
 
       - name: HIP info
         run: |
+          cmake --version
           hipcc --version
 
       - name: Configure
