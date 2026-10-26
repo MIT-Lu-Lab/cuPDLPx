@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title description">
+  <title id="title">CUDA Graphs reduce repeated CPU kernel-launch overhead</title>
+  <desc id="description">Separate CPU launches leave latency gaps between short GPU kernels, while one graph launch submits the recorded kernels together.</desc>
+  <defs>
+    <marker id="arrow-dark" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 8 4 0 8Z" fill="#aab4c5"/>
+    </marker>
+    <style>
+      .label{font:600 22px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#edf2f7}
+      .small{font:500 17px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#b7c0ce}
+      .cpu{fill:#f0abfc}.gpu{fill:#bef264}
+      .cpu-box{fill:#131c2c;stroke:#e879f9;stroke-width:2.5}
+      .gpu-box{fill:#131c2c;stroke:#a3e635;stroke-width:2.5}
+      .line{fill:none;stroke:#aab4c5;stroke-width:2;marker-end:url(#arrow-dark)}
+      .axis{fill:none;stroke:#fb923c;stroke-width:2.5;marker-end:url(#arrow-dark)}
+      .guide{fill:none;stroke:#94a3b8;stroke-width:1.5;stroke-dasharray:6 5}
+    </style>
+  </defs>
+
+  <text x="1050" y="43" class="label cpu">CPU Time</text>
+  <text x="1050" y="140" class="label gpu">GPU Time</text>
+
+  <g>
+    <rect x="105" y="32" width="150" height="54" rx="2" class="cpu-box"/>
+    <rect x="275" y="32" width="150" height="54" rx="2" class="cpu-box"/>
+    <rect x="445" y="32" width="150" height="54" rx="2" class="cpu-box"/>
+    <rect x="615" y="32" width="150" height="54" rx="2" class="cpu-box"/>
+    <rect x="785" y="32" width="150" height="54" rx="2" class="cpu-box"/>
+    <text x="180" y="67" text-anchor="middle" class="label">Launch A</text>
+    <text x="350" y="67" text-anchor="middle" class="label">Launch B</text>
+    <text x="520" y="67" text-anchor="middle" class="label">Launch C</text>
+    <text x="690" y="67" text-anchor="middle" class="label">Launch D</text>
+    <text x="860" y="67" text-anchor="middle" class="label">Launch E</text>
+
+    <path d="M255 59H275V112H309" class="line"/>
+    <path d="M425 59H445V112H479" class="line"/>
+    <path d="M595 59H615V112H649" class="line"/>
+    <path d="M765 59H785V112H819" class="line"/>
+    <path d="M935 59H955V112H989" class="line"/>
+
+    <rect x="310" y="92" width="58" height="58" class="gpu-box"/>
+    <rect x="480" y="92" width="58" height="58" class="gpu-box"/>
+    <rect x="650" y="92" width="58" height="58" class="gpu-box"/>
+    <rect x="820" y="92" width="58" height="58" class="gpu-box"/>
+    <rect x="990" y="92" width="58" height="58" class="gpu-box"/>
+    <text x="339" y="128" text-anchor="middle" class="label">A</text>
+    <text x="509" y="128" text-anchor="middle" class="label">B</text>
+    <text x="679" y="128" text-anchor="middle" class="label">C</text>
+    <text x="849" y="128" text-anchor="middle" class="label">D</text>
+    <text x="1019" y="128" text-anchor="middle" class="label">E</text>
+    <text x="235" y="112" text-anchor="end" class="small">launch latency</text>
+  </g>
+
+  <path d="M80 188H1100" class="axis"/>
+  <text x="1110" y="195" class="small">time</text>
+
+  <g>
+    <rect x="24" y="251" width="76" height="54" rx="2" fill="#131c2c" stroke="#e879f9" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="62" y="274" text-anchor="middle" class="small">Build</text>
+    <text x="62" y="296" text-anchor="middle" class="small">graph</text>
+    <path d="M100 278H126" class="guide"/>
+    <rect x="126" y="244" width="180" height="68" rx="2" class="cpu-box"/>
+    <text x="216" y="286" text-anchor="middle" class="label">Launch graph</text>
+    <path d="M306 278H345V348H382" class="line"/>
+
+    <rect x="383" y="320" width="72" height="72" class="gpu-box"/>
+    <rect x="455" y="320" width="72" height="72" class="gpu-box"/>
+    <rect x="527" y="320" width="72" height="72" class="gpu-box"/>
+    <rect x="599" y="320" width="72" height="72" class="gpu-box"/>
+    <rect x="671" y="320" width="72" height="72" class="gpu-box"/>
+    <text x="419" y="364" text-anchor="middle" class="label">A</text>
+    <text x="491" y="364" text-anchor="middle" class="label">B</text>
+    <text x="563" y="364" text-anchor="middle" class="label">C</text>
+    <text x="635" y="364" text-anchor="middle" class="label">D</text>
+    <text x="707" y="364" text-anchor="middle" class="label">E</text>
+
+    <path d="M743 303V286H1048V303" class="guide"/>
+    <text x="895" y="275" text-anchor="middle" class="label">time saved</text>
+  </g>
+</svg>
