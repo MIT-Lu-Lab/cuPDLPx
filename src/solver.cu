@@ -53,7 +53,7 @@ __global__ void rescale_solution_kernel(double *__restrict__ primal_solution,
                                         int n_vars,
                                         int n_cons);
 static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state, const lp_problem_t *original_problem);
-static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
+void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_problem,
                                                     const pdhg_parameters_t *params,
@@ -955,7 +955,7 @@ void compute_next_dual_solution(pdhg_solver_state_t *state,
     }
 }
 
-static void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
+void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
     if (params->debug)
     {

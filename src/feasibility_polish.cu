@@ -34,7 +34,6 @@ void compute_next_dual_solution(pdhg_solver_state_t *state, int k_offset, double
 
 static void perform_primal_restart(pdhg_solver_state_t *state);
 static void perform_dual_restart(pdhg_solver_state_t *state);
-static void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is_primal_polish);
 static void compute_polish_fixed_point_error_host(pdhg_solver_state_t *state, bool is_primal_polish);
 static void compute_polish_fixed_point_error(pdhg_solver_state_t *state, bool is_primal_polish);
 static void
@@ -208,7 +207,7 @@ static void compute_polish_residual_host(pdhg_solver_state_t *state, norm_type_t
 
 // The fixed point error of a polishing iterate: only its own side of the
 // movement term, without the square root (the restart test compares ratios).
-static void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is_primal_polish)
+void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is_primal_polish)
 {
     compute_solution_difference(state,
                                 state->pdhg_primal_solution,

@@ -37,6 +37,9 @@ extern "C"
 
     void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin);
 
+    void launch_candidate_reductions(pdhg_solver_state_t *state, int c);
+    void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual_side);
+
 #ifdef __cplusplus
 }
 #endif

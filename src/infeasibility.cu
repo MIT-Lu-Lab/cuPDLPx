@@ -150,7 +150,7 @@ __global__ void form_dual_candidates_kernel(candidate_directions_t directions,
 
 // First-round scalars of candidate c. Violations are reduced in the rescaled
 // space, which decides the certificate, and in original units, which are reported.
-static void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
+void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints;
@@ -435,7 +435,7 @@ evaluate_objective_margins(const pdhg_solver_state_t *state, double objective_ma
 
 // Second round for the sides that need it: D becomes |D| in place and prod_m
 // becomes |A||D|; likewise on the dual side.
-static void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual_side)
+void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual_side)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints, K = INFEAS_NUM_CANDIDATES;
