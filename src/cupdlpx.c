@@ -215,9 +215,12 @@ int cupdlpx_validate_parameters(const pdhg_parameters_t *p, char *error_message,
     CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_feasible_relative > 0.0,
                         "eps_feasible_relative must be positive (got %g)",
                         p->termination_criteria.eps_feasible_relative);
-    CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_infeasible_relative > 0.0,
-                        "eps_infeasible_relative must be positive (got %g)",
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_infeasible_relative >= 0.0,
+                        "eps_infeasible_relative must be nonnegative, 0 disables infeasibility detection (got %g)",
                         p->termination_criteria.eps_infeasible_relative);
+    CUPDLPX_CHECK_PARAM(p->termination_criteria.infeasible_ray_objective_margin >= 0.0,
+                        "infeasible_ray_objective_margin must be nonnegative, 0 is a plain sign test (got %g)",
+                        p->termination_criteria.infeasible_ray_objective_margin);
     CUPDLPX_CHECK_PARAM(p->termination_criteria.eps_feas_polish_relative > 0.0,
                         "eps_feas_polish_relative must be positive (got %g)",
                         p->termination_criteria.eps_feas_polish_relative);
@@ -266,6 +269,7 @@ cupdlpx_result_t *solve_lp_problem(lp_problem_t *prob, const pdhg_parameters_t *
         fprintf(stderr, "[interface] solve_lp_problem: invalid arguments.\n");
         return NULL;
     }
+    cupdlpx_gpu_init_async();
 
     // prepare parameters: use defaults if not provided
     pdhg_parameters_t local_params;

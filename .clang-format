@@ -44,3 +44,6 @@ AttributeMacros:
   - __constant__
   - __managed__
   - __launch_bounds__
+
+Macros:
+  - "DEVICE_FN(i)=[=](int i)"

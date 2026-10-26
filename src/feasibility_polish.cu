@@ -15,6 +15,8 @@ limitations under the License.
 */
 
 #include "feasibility_polish.h"
+#include "reduce.h"
+#include "termination.h"
 #include "utils.h"
 
 #include <math.h>
@@ -32,8 +34,12 @@ void compute_next_dual_solution(pdhg_solver_state_t *state, int k_offset, double
 
 static void perform_primal_restart(pdhg_solver_state_t *state);
 static void perform_dual_restart(pdhg_solver_state_t *state);
-static void compute_primal_fixed_point_error(pdhg_solver_state_t *state);
-static void compute_dual_fixed_point_error(pdhg_solver_state_t *state);
+static void compute_polish_fixed_point_error_host(pdhg_solver_state_t *state, bool is_primal_polish);
+static void compute_polish_fixed_point_error(pdhg_solver_state_t *state, bool is_primal_polish);
+static void
+compute_polish_residual_device(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, bool is_primal_polish);
+static void
+compute_polish_residual_host(pdhg_solver_state_t *state, norm_type_t optimality_norm, bool is_primal_polish);
 static pdhg_solver_state_t *initialize_primal_feas_polish_state(const pdhg_solver_state_t *original_state);
 static pdhg_solver_state_t *initialize_dual_feas_polish_state(const pdhg_solver_state_t *original_state);
 void primal_feasibility_polish(const pdhg_parameters_t *params,
@@ -45,14 +51,189 @@ void dual_feasibility_polish(const pdhg_parameters_t *params,
 void primal_feas_polish_state_free(pdhg_solver_state_t *state);
 void dual_feas_polish_state_free(pdhg_solver_state_t *state);
 __global__ void zero_finite_value_vectors_kernel(double *__restrict__ vec, int n);
-__global__ void compute_delta_primal_solution_kernel(const double *__restrict__ initial_primal,
-                                                     const double *__restrict__ pdhg_primal,
-                                                     double *__restrict__ delta_primal,
-                                                     int n_vars);
-__global__ void compute_delta_dual_solution_kernel(const double *__restrict__ initial_dual,
-                                                   const double *__restrict__ pdhg_dual,
-                                                   double *__restrict__ delta_dual,
-                                                   int n_cons);
+
+// Termination, logging and residuals of the polishing phases.
+
+static void check_feas_polishing_termination_criteria(pdhg_solver_state_t *solver_state,
+                                                      const pdhg_solver_state_t *ori_solver_state,
+                                                      const termination_criteria_t *criteria,
+                                                      bool is_primal_polish)
+{
+    solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
+    if (is_primal_polish)
+    {
+        if (solver_state->relative_primal_residual <= criteria->eps_feas_polish_relative)
+        {
+            solver_state->termination_reason = TERMINATION_REASON_FEAS_POLISH_SUCCESS;
+            return;
+        }
+    }
+    else
+    {
+        if (solver_state->relative_dual_residual <= criteria->eps_feas_polish_relative)
+        {
+            solver_state->termination_reason = TERMINATION_REASON_FEAS_POLISH_SUCCESS;
+            return;
+        }
+    }
+    if (solver_state->total_count >= criteria->iteration_limit)
+    {
+        solver_state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
+        return;
+    }
+    double total_time_sec = (double)(clock() - ori_solver_state->start_time) / CLOCKS_PER_SEC;
+    if (total_time_sec >= criteria->time_sec_limit)
+    {
+        solver_state->termination_reason = TERMINATION_REASON_TIME_LIMIT;
+        return;
+    }
+}
+
+static void print_initial_feas_polish_info(bool is_primal_polish, const pdhg_parameters_t *params)
+{
+    if (!params->verbose)
+    {
+        return;
+    }
+    printf("---------------------------------------------------------------------------------------\n");
+    printf("Starting %s Feasibility Polishing Phase with relative tolerance %.2e\n",
+           is_primal_polish ? "Primal" : "Dual",
+           params->termination_criteria.eps_feas_polish_relative);
+    printf("---------------------------------------------------------------------------------------\n");
+    if (is_primal_polish)
+        printf("%s %s |  %s  | %s | %s \n", "  iter", "  time ", "pr obj", " abs pr res ", " rel pr res ");
+    else
+        printf("%s %s |  %s  | %s | %s \n", "  iter", "  time ", "du obj", " abs du res ", " rel du res ");
+    printf("---------------------------------------------------------------------------------------\n");
+}
+
+static void
+pdhg_feas_polish_final_log(const pdhg_solver_state_t *primal_state, const pdhg_solver_state_t *dual_state, bool verbose)
+{
+    if (!verbose)
+    {
+        return;
+    }
+    printf("---------------------------------------------------------------------------------------\n");
+    printf("Feasibility Polishing Summary\n");
+    printf("  Primal Status        : %s\n", termination_reason_to_string(primal_state->termination_reason));
+    printf("  Primal Iterations    : %d\n", primal_state->total_count);
+    printf("  Primal Time Usage    : %.3g sec\n", primal_state->cumulative_time_sec);
+    printf("  Dual Status          : %s\n", termination_reason_to_string(dual_state->termination_reason));
+    printf("  Dual Iterations      : %d\n", dual_state->total_count);
+    printf("  Dual Time Usage      : %.3g sec\n", dual_state->cumulative_time_sec);
+    printf("  Primal Residual      : %.3e\n", primal_state->relative_primal_residual);
+    printf("  Dual Residual        : %.3e\n", dual_state->relative_dual_residual);
+    printf("  Primal Dual Gap      : %.3e\n",
+           fabs(primal_state->primal_objective_value - dual_state->dual_objective_value) /
+               (1.0 + fabs(primal_state->primal_objective_value) + fabs(dual_state->dual_objective_value)));
+}
+
+static void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state, bool verbose, bool is_primal_polish)
+{
+    if (!verbose)
+    {
+        return;
+    }
+    if (state->total_count % get_print_frequency(state->total_count) == 0)
+    {
+        if (is_primal_polish)
+        {
+            printf("%6d %.1e | %8.1e |    %.1e   |   %.1e   \n",
+                   state->total_count,
+                   state->cumulative_time_sec,
+                   state->original_objective_sign * state->primal_objective_value,
+                   state->absolute_primal_residual,
+                   state->relative_primal_residual);
+        }
+        else
+        {
+            printf("%6d %.1e | %8.1e |    %.1e   |   %.1e   \n",
+                   state->total_count,
+                   state->cumulative_time_sec,
+                   state->original_objective_sign * state->dual_objective_value,
+                   state->absolute_dual_residual,
+                   state->relative_dual_residual);
+        }
+    }
+}
+
+// Residuals and objective values of a polishing iterate; only its own side is
+// read. The objective terms use the original state's vectors, because the
+// primal polish zeroes its objective and the dual polish its iterate and bounds.
+static void
+compute_polish_residual_device(pdhg_solver_state_t *state, const pdhg_solver_state_t *ori_state, bool is_primal_polish)
+{
+    if (is_primal_polish)
+    {
+        cupdlpx_spmv_Ax(state->sparse_handle, state->spmv_ctx, state->pdhg_primal_solution, state->primal_product);
+        launch_residual_check(state,
+                              ori_state->objective_vector,
+                              state->pdhg_primal_solution,
+                              state->constraint_lower_bound_finite_val,
+                              state->constraint_upper_bound_finite_val);
+    }
+    else
+    {
+        cupdlpx_spmv_ATx(state->sparse_handle, state->spmv_ctx, state->pdhg_dual_solution, state->dual_product);
+        launch_residual_check(state,
+                              state->objective_vector,
+                              ori_state->pdhg_primal_solution,
+                              ori_state->constraint_lower_bound_finite_val,
+                              ori_state->constraint_upper_bound_finite_val);
+    }
+}
+
+static void compute_polish_residual_host(pdhg_solver_state_t *state, norm_type_t optimality_norm, bool is_primal_polish)
+{
+    const device_scalars_t *v = state->scalars_h;
+    bool linf = optimality_norm == NORM_TYPE_L_INF;
+    double scale = state->constraint_bound_rescaling * state->objective_vector_rescaling;
+    if (is_primal_polish)
+    {
+        state->absolute_primal_residual =
+            (linf ? v->primal_res_max : sqrt(v->primal_res_sq)) / state->constraint_bound_rescaling;
+        state->relative_primal_residual = state->absolute_primal_residual / (1.0 + state->constraint_bound_norm);
+        state->primal_objective_value = v->objective_dot / scale + state->objective_constant;
+    }
+    else
+    {
+        state->absolute_dual_residual =
+            (linf ? v->dual_res_max : sqrt(v->dual_res_sq)) / state->objective_vector_rescaling;
+        state->relative_dual_residual = state->absolute_dual_residual / (1.0 + state->objective_vector_norm);
+        state->dual_objective_value = (v->dual_slack_dot + v->primal_slack_sum) / scale + state->objective_constant;
+    }
+}
+
+// The fixed point error of a polishing iterate: only its own side of the
+// movement term, without the square root (the restart test compares ratios).
+void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is_primal_polish)
+{
+    compute_solution_difference(state,
+                                state->pdhg_primal_solution,
+                                state->reflected_primal_solution,
+                                state->pdhg_dual_solution,
+                                state->reflected_dual_solution);
+    const double *delta = is_primal_polish ? state->delta_primal_solution : state->delta_dual_solution;
+    int len = is_primal_polish ? state->num_variables : state->num_constraints;
+    double *out = is_primal_polish ? &state->scalars_d->fixed_point_primal_sq : &state->scalars_d->fixed_point_dual_sq;
+    reduce_sum(state, len, DEVICE_FN(i) { return delta[i] * delta[i]; }, out);
+}
+
+static void compute_polish_fixed_point_error_host(pdhg_solver_state_t *state, bool is_primal_polish)
+{
+    const device_scalars_t *v = state->scalars_h;
+    state->fixed_point_error = is_primal_polish ? v->fixed_point_primal_sq * state->primal_weight
+                                                : v->fixed_point_dual_sq / state->primal_weight;
+}
+
+static void compute_polish_fixed_point_error(pdhg_solver_state_t *state, bool is_primal_polish)
+{
+    compute_polish_fixed_point_error_device(state, is_primal_polish);
+    fetch_device_scalars(state);
+    compute_polish_fixed_point_error_host(state, is_primal_polish);
+}
+
 // Feasibility Polishing
 void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *state)
 {
@@ -139,7 +320,7 @@ void primal_feasibility_polish(const pdhg_parameters_t *params,
 
         if (do_restart)
         {
-            compute_primal_fixed_point_error(state);
+            compute_polish_fixed_point_error(state, true);
             state->initial_fixed_point_error = state->fixed_point_error;
             do_restart = false;
         }
@@ -169,8 +350,11 @@ void primal_feasibility_polish(const pdhg_parameters_t *params,
         }
         CUDA_CHECK(cudaGraphLaunch(graphExec, state->stream));
 
-        compute_primal_fixed_point_error(state);
-        compute_primal_feas_polish_residual(state, ori_state, params->optimality_norm);
+        compute_polish_fixed_point_error_device(state, true);
+        compute_polish_residual_device(state, ori_state, true);
+        fetch_device_scalars(state);
+        compute_polish_fixed_point_error_host(state, true);
+        compute_polish_residual_host(state, params->optimality_norm, true);
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 
@@ -211,7 +395,7 @@ void dual_feasibility_polish(const pdhg_parameters_t *params,
 
         if (do_restart)
         {
-            compute_dual_fixed_point_error(state);
+            compute_polish_fixed_point_error(state, false);
             state->initial_fixed_point_error = state->fixed_point_error;
             do_restart = false;
         }
@@ -241,8 +425,11 @@ void dual_feasibility_polish(const pdhg_parameters_t *params,
         }
         CUDA_CHECK(cudaGraphLaunch(graphExec, state->stream));
 
-        compute_dual_fixed_point_error(state);
-        compute_dual_feas_polish_residual(state, ori_state, params->optimality_norm);
+        compute_polish_fixed_point_error_device(state, false);
+        compute_polish_residual_device(state, ori_state, false);
+        fetch_device_scalars(state);
+        compute_polish_fixed_point_error_host(state, false);
+        compute_polish_residual_host(state, params->optimality_norm, false);
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 
@@ -556,51 +743,4 @@ static void perform_dual_restart(pdhg_solver_state_t *state)
                           cudaMemcpyDeviceToDevice));
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
-}
-
-__global__ void compute_delta_primal_solution_kernel(const double *__restrict__ initial_primal,
-                                                     const double *__restrict__ pdhg_primal,
-                                                     double *__restrict__ delta_primal,
-                                                     int n_vars)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_vars)
-    {
-        delta_primal[i] = pdhg_primal[i] - initial_primal[i];
-    }
-}
-
-__global__ void compute_delta_dual_solution_kernel(const double *__restrict__ initial_dual,
-                                                   const double *__restrict__ pdhg_dual,
-                                                   double *__restrict__ delta_dual,
-                                                   int n_cons)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_cons)
-    {
-        delta_dual[i] = pdhg_dual[i] - initial_dual[i];
-    }
-}
-
-static void compute_primal_fixed_point_error(pdhg_solver_state_t *state)
-{
-    compute_delta_primal_solution_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream>>>(
-        state->pdhg_primal_solution,
-        state->reflected_primal_solution,
-        state->delta_primal_solution,
-        state->num_variables);
-    double primal_norm = 0.0;
-    CUBLAS_CHECK(
-        cublasDnrm2_v2_64(state->blas_handle, state->num_variables, state->delta_primal_solution, 1, &primal_norm));
-    state->fixed_point_error = primal_norm * primal_norm * state->primal_weight;
-}
-
-static void compute_dual_fixed_point_error(pdhg_solver_state_t *state)
-{
-    compute_delta_dual_solution_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream>>>(
-        state->pdhg_dual_solution, state->reflected_dual_solution, state->delta_dual_solution, state->num_constraints);
-    double dual_norm = 0.0;
-    CUBLAS_CHECK(
-        cublasDnrm2_v2_64(state->blas_handle, state->num_constraints, state->delta_dual_solution, 1, &dual_norm));
-    state->fixed_point_error = dual_norm * dual_norm / state->primal_weight;
 }

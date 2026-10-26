@@ -88,6 +88,7 @@ extern "C"
         double eps_feasible_relative;
         double eps_feas_polish_relative;
         double eps_infeasible_relative;
+        double infeasible_ray_objective_margin;
         double time_sec_limit;
         int iteration_limit;
     } termination_criteria_t;
@@ -109,6 +110,7 @@ extern "C"
         bool feasibility_polishing;
         norm_type_t optimality_norm;
         bool presolve;
+        bool infeasibility_detection;
         double matrix_zero_tol;
         double infinite_bound;
         int geometric_mean_iterations;

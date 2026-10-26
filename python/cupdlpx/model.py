@@ -38,6 +38,7 @@ _BOOL_PARAMS = frozenset(
         "bound_objective_rescaling",
         "feasibility_polishing",
         "presolve",
+        "infeasibility_detection",
         "active_set_boost",
     }
 )
@@ -57,6 +58,7 @@ _FLOAT_PARAMS = frozenset(
         "eps_optimal_relative",
         "eps_feasible_relative",
         "eps_infeasible_relative",
+        "infeasible_ray_objective_margin",
         "time_sec_limit",
         "pock_chambolle_alpha",
         "artificial_restart_threshold",

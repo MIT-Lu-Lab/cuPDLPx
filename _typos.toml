@@ -1,0 +1,3 @@
+[default]
+# benchmark instance names (netlib, MIPLIB) quoted in docs/
+extend-ignore-re = ["\\b(shs|ns|neos)[0-9-]+\\b"]

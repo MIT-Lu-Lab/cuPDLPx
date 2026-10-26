@@ -47,6 +47,9 @@ limitations under the License.
 // Memory management
 #define cudaMalloc hipMalloc
 #define cudaFree hipFree
+#define cudaHostAlloc hipHostMalloc
+#define cudaHostAllocDefault hipHostMallocDefault
+#define cudaFreeHost hipHostFree
 #define cudaMemcpy hipMemcpy
 #define cudaMemcpyAsync hipMemcpyAsync
 #define cudaMemset hipMemset
@@ -157,6 +160,14 @@ static inline const char *cublasGetStatusName(hipblasStatus_t status)
 #define cusparseSpMV hipsparseSpMV
 #define cusparseSpMV_bufferSize hipsparseSpMV_bufferSize
 #define cusparseSpMV_preprocess hipsparseSpMV_preprocess
+#define cusparseDnMatDescr_t hipsparseDnMatDescr_t
+#define cusparseCreateDnMat hipsparseCreateDnMat
+#define cusparseDestroyDnMat hipsparseDestroyDnMat
+#define cusparseSpMM hipsparseSpMM
+#define cusparseSpMM_bufferSize hipsparseSpMM_bufferSize
+#define cusparseSpMM_preprocess hipsparseSpMM_preprocess
+#define CUSPARSE_ORDER_COL HIPSPARSE_ORDER_COL
+#define CUSPARSE_SPMM_ALG_DEFAULT HIPSPARSE_SPMM_ALG_DEFAULT
 #define cusparseCsr2cscEx2 hipsparseCsr2cscEx2
 #define cusparseCsr2cscEx2_bufferSize hipsparseCsr2cscEx2_bufferSize
 

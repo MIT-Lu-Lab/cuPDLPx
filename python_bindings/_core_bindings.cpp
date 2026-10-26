@@ -274,6 +274,7 @@ static py::dict get_default_params_py()
     d["eps_optimal_relative"] = p.termination_criteria.eps_optimal_relative;
     d["eps_feasible_relative"] = p.termination_criteria.eps_feasible_relative;
     d["eps_infeasible_relative"] = p.termination_criteria.eps_infeasible_relative;
+    d["infeasible_ray_objective_margin"] = p.termination_criteria.infeasible_ray_objective_margin;
 
     // limits
     d["time_sec_limit"] = p.termination_criteria.time_sec_limit;
@@ -297,6 +298,7 @@ static py::dict get_default_params_py()
 
     // feasiblity polishing
     d["feasibility_polishing"] = p.feasibility_polishing;
+    d["infeasibility_detection"] = p.infeasibility_detection;
     d["eps_feas_polish_relative"] = p.termination_criteria.eps_feas_polish_relative;
 
     // Termination criteria norm
@@ -421,6 +423,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     getf("eps_optimal_relative", p->termination_criteria.eps_optimal_relative);
     getf("eps_feasible_relative", p->termination_criteria.eps_feasible_relative);
     getf("eps_infeasible_relative", p->termination_criteria.eps_infeasible_relative);
+    getf("infeasible_ray_objective_margin", p->termination_criteria.infeasible_ray_objective_margin);
 
     // limits
     getf("time_sec_limit", p->termination_criteria.time_sec_limit);
@@ -444,6 +447,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
 
     // Feasibility Polishing
     getb("feasibility_polishing", p->feasibility_polishing);
+    getb("infeasibility_detection", p->infeasibility_detection);
     getf("eps_feas_polish_relative", p->termination_criteria.eps_feas_polish_relative);
 
     // Termination criteria norm
@@ -861,6 +865,7 @@ static py::dict read_mps_py(const std::string &filename)
     {
         // release GIL during file parsing
         py::gil_scoped_release release;
+        cupdlpx_gpu_init_async();
         prob = read_mps_file(filename.c_str());
     }
     if (!prob)

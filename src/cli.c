@@ -123,6 +123,10 @@ void save_solver_summary(const cupdlpx_result_t *result, const char *output_dir,
         // }
     }
     fprintf(outfile, "Precondition time (sec): %e\n", result->rescaling_time_sec);
+    fprintf(outfile, "Max Primal Ray Infeasibility: %e\n", result->max_primal_ray_infeasibility);
+    fprintf(outfile, "Primal Ray Linear Objective: %e\n", result->primal_ray_linear_objective);
+    fprintf(outfile, "Max Dual Ray Infeasibility: %e\n", result->max_dual_ray_infeasibility);
+    fprintf(outfile, "Dual Ray Objective: %e\n", result->dual_ray_objective);
     fprintf(outfile, "Runtime (sec): %e\n", result->cumulative_time_sec);
     fprintf(outfile, "Iterations Count: %d\n", result->total_count);
     fprintf(outfile, "ASB Step Raise Count: %d\n", result->asb_raise_count);
@@ -213,8 +217,21 @@ void print_usage(const char *prog_name)
             "      --eps_feas_polish <tolerance>   Relative feasibility "
             "polish tolerance (default: 1e-6).\n");
     fprintf(stderr,
+            "      --eps_infeasible <tolerance>    Infeasibility detection tolerance: "
+            "largest relative\n"
+            "                                      constraint residual of an accepted ray "
+            "certificate (default: 1e-8; 0 also disables detection).\n");
+    fprintf(stderr,
+            "      --infeasible_ray_objective_margin <margin>\n"
+            "                                      Relative margin the objective term of a ray must clear\n"
+            "                                      to count as a certificate (default: 1e-8; 0 is a "
+            "plain sign test).\n");
+    fprintf(stderr,
             "      --opt_norm <norm_type>          "
             "Norm for optimality criteria: l2 or linf (default: l2).\n");
+    fprintf(stderr,
+            "      --no_infeasibility_detection    "
+            "Disable infeasibility detection.\n");
     fprintf(stderr,
             "      --no_presolve                   "
             "Disable presolve (default: enabled).\n");
@@ -272,6 +289,8 @@ int main(int argc, char *argv[])
                                            {"eps_opt", required_argument, 0, 1003},
                                            {"eps_feas", required_argument, 0, 1004},
                                            {"eps_feas_polish", required_argument, 0, 1006},
+                                           {"eps_infeasible", required_argument, 0, 1031},
+                                           {"infeasible_ray_objective_margin", required_argument, 0, 1033},
                                            {"feasibility_polishing", no_argument, 0, 'f'},
                                            {"geo_mean_iter", required_argument, 0, 1018},
                                            {"l_inf_ruiz_iter", required_argument, 0, 1007},
@@ -282,6 +301,7 @@ int main(int argc, char *argv[])
                                            {"sv_tol", required_argument, 0, 1012},
                                            {"eval_freq", required_argument, 0, 1013},
                                            {"opt_norm", required_argument, 0, 1014},
+                                           {"no_infeasibility_detection", no_argument, 0, 1032},
                                            {"no_presolve", no_argument, 0, 1015},
                                            {"matrix_zero_tol", required_argument, 0, 1016},
                                            {"infinite_bound", required_argument, 0, 1017},
@@ -328,6 +348,12 @@ int main(int argc, char *argv[])
             case 1006: // --eps_feas_polish_relative
                 params.termination_criteria.eps_feas_polish_relative = atof(optarg);
                 break;
+            case 1031: // --eps_infeasible
+                params.termination_criteria.eps_infeasible_relative = atof(optarg);
+                break;
+            case 1033: // --infeasible_ray_objective_margin
+                params.termination_criteria.infeasible_ray_objective_margin = atof(optarg);
+                break;
             case 'f': // --feasibility_polishing
                 params.feasibility_polishing = true;
                 break;
@@ -373,6 +399,9 @@ int main(int argc, char *argv[])
                 }
             }
             break;
+            case 1032: // --no_infeasibility_detection
+                params.infeasibility_detection = false;
+                break;
             case 1015: // --no_presolve
                 params.presolve = false;
                 break;
@@ -439,6 +468,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    cupdlpx_gpu_init_async();
     lp_problem_t *problem = read_mps_file(filename);
 
     if (problem == NULL)

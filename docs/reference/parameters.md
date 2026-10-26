@@ -155,6 +155,35 @@ name, default, type, and allowed values for the selected interface.
 Residuals are evaluated in the unscaled model; when
 [presolve](../algorithm/presolve.md) is enabled, this is the presolved model.
 
+## Infeasibility detection
+
+=== "Python"
+
+    | Parameter | Default | Type and range | Description |
+    | --- | --- | --- | --- |
+    | `InfeasibilityDetection` | `true` | boolean<br>`false`, `true` | Look for primal and dual infeasibility certificates. |
+    | `InfeasibleTol` | `1e-8` | float<br>$[0,\infty)$ | Largest relative constraint residual of an accepted ray certificate, relative to the activity $\lvert A\rvert\,\lvert x\rvert$ of the ray; `0` disables infeasibility detection. |
+    | `InfeasibleRayObjectiveMargin` | `1e-8` | float<br>$[0,\infty)$ | Smallest relative objective margin of an accepted ray certificate: $-c^\top d \ge \delta\,\lvert c\rvert^\top\lvert d\rvert$ for a primal ray $d$ with margin $\delta$, and likewise for the dual objective term of a dual ray; `0` reduces it to a sign test. |
+
+=== "C and Julia"
+
+    | Parameter | Default | Type and range | Description |
+    | --- | --- | --- | --- |
+    | `infeasibility_detection` | `true` | boolean<br>`false`, `true` | Look for primal and dual infeasibility certificates. |
+    | `eps_infeasible_relative` | `1e-8` | float<br>$[0,\infty)$ | Largest relative constraint residual of an accepted ray certificate, relative to the activity $\lvert A\rvert\,\lvert x\rvert$ of the ray; `0` disables infeasibility detection. |
+    | `infeasible_ray_objective_margin` | `1e-8` | float<br>$[0,\infty)$ | Smallest relative objective margin of an accepted ray certificate: $-c^\top d \ge \delta\,\lvert c\rvert^\top\lvert d\rvert$ for a primal ray $d$ with margin $\delta$, and likewise for the dual objective term of a dual ray; `0` reduces it to a sign test. |
+
+=== "Command line"
+
+    | Parameter | Default | Type and range | Description |
+    | --- | --- | --- | --- |
+    | `--no_infeasibility_detection` | Not passed | flag | Disable infeasibility detection (enabled by default). |
+    | `--eps_infeasible` | `1e-8` | float<br>$[0,\infty)$ | Largest relative constraint residual of an accepted ray certificate, relative to the activity $\lvert A\rvert\,\lvert x\rvert$ of the ray; `0` disables infeasibility detection. |
+    | `--infeasible_ray_objective_margin` | `1e-8` | float<br>$[0,\infty)$ | Smallest relative objective margin of an accepted ray certificate: $-c^\top d \ge \delta\,\lvert c\rvert^\top\lvert d\rvert$ for a primal ray $d$ with margin $\delta$, and likewise for the dual objective term of a dual ray; `0` reduces it to a sign test. |
+
+The ray certificate is evaluated on the rescaled problem, after row and column
+equilibration, so the scaling of the input does not decide the verdict.
+
 ## Scaling and preprocessing
 
 === "Python"

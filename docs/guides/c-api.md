@@ -120,6 +120,10 @@ int main(void) {
 }
 ```
 
+`cupdlpx_gpu_init_async` creates the CUDA context in a background thread.
+`solve_lp_problem` calls it itself; calling it before building or reading the
+problem overlaps that work with the cold start.
+
 ## Warm starts
 
 To warm-start the solver, disable presolve and provide a primal vector,

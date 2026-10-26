@@ -64,8 +64,8 @@ Common architecture values include `gfx90a` for MI200, `gfx1100` for RDNA3,
 and `gfx1201` for RDNA4. Replace the value with the architecture supported by
 the installed ROCm toolchain.
 
-On HIP builds, cuBLAS, cuSPARSE, and CUB calls are mapped to hipBLAS,
-hipSPARSE, and hipCUB.
+On HIP builds, cuBLAS, cuSPARSE, CUB, and Thrust calls are mapped to
+hipBLAS, hipSPARSE, hipCUB, and rocThrust.
 
 ### Build outputs
 

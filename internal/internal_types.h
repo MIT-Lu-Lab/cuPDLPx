@@ -25,6 +25,65 @@ limitations under the License.
 #include <stdbool.h>
 #include <time.h>
 
+// Scalars of a termination check, one reduction each, in the rescaled space
+// except viol_max_orig. Name parts: res = residual, sq = sum of squares,
+// max = infinity norm, dot = inner product.
+
+#define INFEAS_NUM_CANDIDATES 3 // candidate rays of one infeasibility check
+
+// One infeasibility candidate: a primal ray d, which certifies dual
+// infeasibility, and a dual ray y with reduced cost r = -A^T y, which certifies
+// primal infeasibility. viol_max_scaled / product_abs_max is the certificate
+// error; viol_max_orig is only reported.
+typedef struct
+{
+    double max_abs;         // ||d||_inf in the original space; normalizes the reported statistics
+    double obj;             // c^T d, the objective term
+    double obj_abs;         // |c|^T |d|, the same with absolute values
+    double viol_max_scaled; // max violation of the sign conditions on A d, rescaled space
+    double product_abs_max; // max_i (|A||d|)_i, scaled like the violation above (second round)
+    double viol_max_orig;   // the violation in original units, reported only
+} primal_ray_scalars_t;
+
+typedef struct
+{
+    double max_abs;            // ||y||_inf in the original space
+    double obj_con_bounds;     // l_c^T y^+ - u_c^T y^-, the constraint-bound part of the dual objective term
+    double obj_var_bounds;     // l_v^T r^+ - u_v^T r^-, the variable-bound part
+    double obj_con_bounds_abs; // |l_c|^T y^+ + |u_c|^T y^-, the constraint-bound part with absolute values
+    double obj_var_bounds_abs; // |l_v|^T r^+ + |u_v|^T r^-, the variable-bound part with absolute values
+    double viol_max_scaled;    // max violation of the sign conditions on r, rescaled space
+    double product_abs_max;    // max_j (|A^T||y|)_j, scaled like the violation above (second round)
+    double viol_max_orig;      // the violation in original units, reported only
+} dual_ray_scalars_t;
+
+typedef struct
+{
+    primal_ray_scalars_t primal_ray;
+    dual_ray_scalars_t dual_ray;
+} infeas_candidate_scalars_t;
+
+typedef struct
+{
+    double fixed_point_dual_sq;   // ||y - T(z)_y||^2, dual part of the fixed point error
+    double fixed_point_primal_sq; // ||x - T(z)_x||^2, primal part
+    double fixed_point_cross;     // (A^T dy)^T dx, cross term of the same error
+    double primal_res_sq;         // sum of squares of the primal residual
+    double primal_res_max;        // infinity norm of the primal residual
+    double primal_slack_sum;      // sum of the primal slacks, a dual objective term
+    double dual_res_sq;           // sum of squares of the dual residual
+    double dual_res_max;          // infinity norm of the dual residual
+    double objective_dot;         // c^T x, the primal objective
+    double dual_slack_dot;        // (dual slack)^T x, the other dual objective term
+    double restart_primal_sq;     // ||x - x_anchor||^2, the primal weight's PID input
+    double restart_dual_sq;       // ||y - y_anchor||^2, the same on the dual side
+    infeas_candidate_scalars_t infeas[INFEAS_NUM_CANDIDATES];
+    int asb_window_delta[4]; // active-set window: variables added, removed, constraints added, removed
+} device_scalars_t;
+
+// Private state of the infeasibility detection, defined in infeasibility.cu.
+typedef struct infeas_ctx infeas_ctx_t;
+
 typedef struct
 {
     int num_rows;
@@ -120,7 +179,6 @@ typedef struct
     double objective_vector_rescaling;
     double *primal_slack;
     double *dual_slack;
-    double *infeasibility_dual_scratch; /* n-vector scratch for the ray certificate; dual_slack must survive */
     double rescaling_time_sec;
     clock_t start_time;
     double cumulative_time_sec;
@@ -139,6 +197,8 @@ typedef struct
     double max_dual_ray_infeasibility;
     double primal_ray_linear_objective;
     double dual_ray_objective;
+    double primal_ray_certificate_error;
+    double dual_ray_certificate_error;
     termination_reason_t termination_reason;
 
     double *delta_primal_solution;
@@ -180,14 +240,19 @@ typedef struct
     double *d_asb_dual_anchor;
     double *d_asb_dual_slack_anchor;
     double *d_asb_dual_projection_input;
-    int *d_asb_count;
 
     cusparseHandle_t sparse_handle;
     cublasHandle_t blas_handle;
     void *spmv_ctx;
+    infeas_ctx_t *infeas_ctx; // detection buffers, created before the main loop when detection is on
 
-    double *ones_primal_d;
-    double *ones_dual_d;
+    // Both norms of each residual are kept so that the norm type is a host-side choice.
+    device_scalars_t *scalars_d;
+    device_scalars_t *scalars_h; // pinned, so that the copy is asynchronous
+    void *reduce_temp_d;         // temporary storage of the reductions
+    size_t reduce_temp_bytes;
+
+    double *delta_dual_product; // A^T delta_dual_solution, scratch of the fixed point error
 
     double feasibility_polishing_time;
     int feasibility_iteration;
