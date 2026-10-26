@@ -47,6 +47,9 @@ limitations under the License.
 // Memory management
 #define cudaMalloc hipMalloc
 #define cudaFree hipFree
+#define cudaHostAlloc hipHostMalloc
+#define cudaHostAllocDefault hipHostMallocDefault
+#define cudaFreeHost hipHostFree
 #define cudaMemcpy hipMemcpy
 #define cudaMemcpyAsync hipMemcpyAsync
 #define cudaMemset hipMemset
