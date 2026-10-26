@@ -82,6 +82,14 @@ if(MSVC)
         $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
         $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zi>
     )
+    if(NOT USE_HIP AND CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA"
+       AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13)
+        # Newer CUDA 13 CCCL headers require the conforming MSVC preprocessor.
+        # Keep CUDA 12 on its existing mode to avoid CUB/Thrust macro errors.
+        target_compile_options(cupdlpx_compile_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
+        )
+    endif()
     target_compile_definitions(cupdlpx_compile_flags INTERFACE 
         _CRT_SECURE_NO_WARNINGS
         _CRT_NONSTDC_NO_DEPRECATE
