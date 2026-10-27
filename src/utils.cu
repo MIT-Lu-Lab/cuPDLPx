@@ -386,8 +386,8 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
     return reason != NULL;
 }
 
-// The context is created once per process; a later CUDA call on any thread
-// waits for it inside the driver.
+// The solver thread must initialize the runtime before creating cuSPARSE
+// handles, which can otherwise race this background initialization.
 void cupdlpx_gpu_init_async(void)
 {
     static std::once_flag once;
