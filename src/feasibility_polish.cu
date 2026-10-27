@@ -205,6 +205,16 @@ static void compute_polish_residual_host(pdhg_solver_state_t *state, norm_type_t
     }
 }
 
+void launch_polish_fixed_point_reductions(const pdhg_solver_state_t *state,
+                                          size_t *required_bytes,
+                                          bool is_primal_polish)
+{
+    const double *delta = is_primal_polish ? state->delta_primal_solution : state->delta_dual_solution;
+    int len = is_primal_polish ? state->num_variables : state->num_constraints;
+    double *out = is_primal_polish ? &state->scalars_d->fixed_point_primal_sq : &state->scalars_d->fixed_point_dual_sq;
+    reduce_sum(state, required_bytes, len, DEVICE_FN(i) { return delta[i] * delta[i]; }, out);
+}
+
 // The fixed point error of a polishing iterate: only its own side of the
 // movement term, without the square root (the restart test compares ratios).
 void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is_primal_polish)
@@ -214,10 +224,7 @@ void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is
                                 state->reflected_primal_solution,
                                 state->pdhg_dual_solution,
                                 state->reflected_dual_solution);
-    const double *delta = is_primal_polish ? state->delta_primal_solution : state->delta_dual_solution;
-    int len = is_primal_polish ? state->num_variables : state->num_constraints;
-    double *out = is_primal_polish ? &state->scalars_d->fixed_point_primal_sq : &state->scalars_d->fixed_point_dual_sq;
-    reduce_sum(state, len, DEVICE_FN(i) { return delta[i] * delta[i]; }, out);
+    launch_polish_fixed_point_reductions(state, NULL, is_primal_polish);
 }
 
 static void compute_polish_fixed_point_error_host(pdhg_solver_state_t *state, bool is_primal_polish)

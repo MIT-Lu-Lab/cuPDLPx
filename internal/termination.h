@@ -48,6 +48,14 @@ extern "C"
                                const double *constraint_lower_bound_finite,
                                const double *constraint_upper_bound_finite);
 
+    // The reductions of the residual and fixed point checks; see reduce.h for
+    // required_bytes.
+    void launch_residual_reductions(const pdhg_solver_state_t *state,
+                                    size_t *required_bytes,
+                                    const double *objective_vector,
+                                    const double *primal_solution);
+    void launch_fixed_point_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
+
     void compute_residual_device(pdhg_solver_state_t *state);
 
     void compute_residual_host(pdhg_solver_state_t *state, norm_type_t optimality_norm);
