@@ -353,13 +353,6 @@ if (CUPDLPX_BUILD_PYTHON)
 endif()
 
 # 6. Install Targets
-# PSLP v0.0.11 installs only PSLP_API.h, but the public cuPDLPx types expose
-# PresolveStats and PSLP_API.h includes PSLP_status.h.
-install(DIRECTORY "${pslp_SOURCE_DIR}/include/PSLP/"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/PSLP
-    FILES_MATCHING PATTERN "*.h"
-)
-
 if (CUPDLPX_BUILD_PYTHON)
     install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
 else()

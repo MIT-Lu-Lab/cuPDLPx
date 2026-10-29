@@ -167,7 +167,6 @@ cupdlpx_result_t *create_result_from_presolve(const cupdlpx_presolve_info_t *inf
     {
         result->termination_reason = TERMINATION_REASON_UNSPECIFIED;
     }
-    // result->presolve_stats = *(info->presolver->stats);
     if (result->num_variables > 0)
     {
         result->primal_solution = (double *)safe_calloc(result->num_variables, sizeof(double));
@@ -224,9 +223,6 @@ void pslp_postsolve(const cupdlpx_presolve_info_t *info, cupdlpx_result_t *resul
         result->primal_objective_value = obj;
         result->dual_objective_value = obj;
     }
-    // if (info->presolver->stats != NULL) {
-    //     result->presolve_stats = *(info->presolver->stats);
-    // }
     return;
 }
 
