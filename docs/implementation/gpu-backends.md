@@ -25,16 +25,13 @@ backend selection, and workspace reuse.
 
 ### CUDA
 
-CMake selects default architectures based on the CUDA version. To reduce
-binary size, specify the target architecture:
+By default CMake builds for every supported major CUDA architecture
+(`all-major`). To build only for the GPU in the build machine, pass `native`:
 
 ```bash
-cmake -B build -DCMAKE_CUDA_ARCHITECTURES=90
+cmake -B build -DCMAKE_CUDA_ARCHITECTURES=native
 cmake --build build --parallel
 ```
-
-Use an architecture supported by the installed CUDA toolkit and the deployment
-GPU.
 
 ### ROCm
 

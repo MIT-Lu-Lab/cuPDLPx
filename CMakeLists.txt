@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # ROOT CMakeLists.txt for cuPDLPx (Unified Build System)
 # -----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.24)
 
 # HIP/ROCm support option (must be set before project() to influence language detection)
 option(USE_HIP "Build with HIP for AMD GPUs" OFF)
@@ -12,19 +12,9 @@ if(USE_HIP)
 else()
   project(cupdlpx LANGUAGES C CXX)
 
-  # Default CUDA architectures: SASS for every current arch, PTX only for the newest one as a forward-compat fallback.
   find_package(CUDAToolkit REQUIRED)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
-    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 13)
-      set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90-real
-          100-real 120-real 120-virtual)
-    elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
-      set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
-          89-real 90-real 100-real 120-real 120-virtual)
-    else()
-      set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
-          89-real 90-real 90-virtual)
-    endif()
+    set(CMAKE_CUDA_ARCHITECTURES all-major)
   endif()
 
   enable_language(CUDA)
@@ -65,6 +55,8 @@ add_library(cupdlpx_compile_flags INTERFACE)
 if(NOT USE_HIP)
   # reduce.h passes device lambdas to thrust::transform_iterator
   target_compile_options(cupdlpx_compile_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
+  # all-major includes Maxwell to Volta on CUDA 12, which nvcc warns are deprecated
+  target_compile_options(cupdlpx_compile_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets>)
 endif()
 
 if(MSVC)
