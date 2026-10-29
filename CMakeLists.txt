@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # ROOT CMakeLists.txt for cuPDLPx (Unified Build System)
 # -----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.24)
 
 # HIP/ROCm support option (must be set before project() to influence language detection)
 option(USE_HIP "Build with HIP for AMD GPUs" OFF)
@@ -12,19 +12,9 @@ if(USE_HIP)
 else()
   project(cupdlpx LANGUAGES C CXX)
 
-  # Default CUDA architectures: SASS for every current arch, PTX only for the newest one as a forward-compat fallback.
   find_package(CUDAToolkit REQUIRED)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
-    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 13)
-      set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90-real
-          100-real 120-real 120-virtual)
-    elseif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL 12.8)
-      set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
-          89-real 90-real 100-real 120-real 120-virtual)
-    else()
-      set(CMAKE_CUDA_ARCHITECTURES 60-real 70-real 75-real 80-real 86-real
-          89-real 90-real 90-virtual)
-    endif()
+    set(CMAKE_CUDA_ARCHITECTURES all-major)
   endif()
 
   enable_language(CUDA)
@@ -57,14 +47,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-if(USE_HIP)
-  # HIP architecture configuration
-  # Default to gfx90a if not specified; can override with -DCMAKE_HIP_ARCHITECTURES=gfx1100, etc.
-  if(NOT DEFINED CMAKE_HIP_ARCHITECTURES OR CMAKE_HIP_ARCHITECTURES STREQUAL "")
-    set(CMAKE_HIP_ARCHITECTURES "gfx90a")
-  endif()
-endif()
-
 # -----------------------------------------------------------------------------
 # [ELEGANT DESIGN] Target-based Compile Flags
 # -----------------------------------------------------------------------------
@@ -73,15 +55,24 @@ add_library(cupdlpx_compile_flags INTERFACE)
 if(NOT USE_HIP)
   # reduce.h passes device lambdas to thrust::transform_iterator
   target_compile_options(cupdlpx_compile_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
+  # all-major includes Maxwell to Volta on CUDA 12, which nvcc warns are deprecated
+  target_compile_options(cupdlpx_compile_flags INTERFACE $<$<COMPILE_LANGUAGE:CUDA>:-Wno-deprecated-gpu-targets>)
 endif()
 
 if(MSVC)
     target_compile_options(cupdlpx_compile_flags INTERFACE
-        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/O2 /W4 /Zi>
-        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/O2>
+        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:/W4 /Zi>
         $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>
         $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zi>
     )
+    if(NOT USE_HIP AND CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA"
+       AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13)
+        # Newer CUDA 13 CCCL headers require the conforming MSVC preprocessor.
+        # Keep CUDA 12 on its existing mode to avoid CUB/Thrust macro errors.
+        target_compile_options(cupdlpx_compile_flags INTERFACE
+            $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>
+        )
+    endif()
     target_compile_definitions(cupdlpx_compile_flags INTERFACE 
         _CRT_SECURE_NO_WARNINGS
         _CRT_NONSTDC_NO_DEPRECATE
@@ -89,7 +80,7 @@ if(MSVC)
         strdup=_strdup
     )
 else()
-    target_compile_options(cupdlpx_compile_flags INTERFACE -O3 -Wall -Wextra -g)
+    target_compile_options(cupdlpx_compile_flags INTERFACE -Wall -Wextra -g)
     if(NOT WIN32)
         target_compile_options(cupdlpx_compile_flags INTERFACE -fPIC)
     endif()
@@ -108,6 +99,7 @@ endif()
 # CONTROL OPTIONS
 # -----------------------------------------------------------------------------
 include(CMakeDependentOption)
+include(GNUInstallDirs)
 
 option(CUPDLPX_BUILD_STATIC_LIB "Build the cuPDLPx static library" ON)
 option(CUPDLPX_BUILD_SHARED_LIB "Build the cuPDLPx shared library" ON)
@@ -196,8 +188,18 @@ target_compile_definitions(cupdlpx_compile_flags INTERFACE PSLP_VERSION="${PSLP_
 # -----------------------------------------------------------------------------
 # TARGET DEFINITIONS
 # -----------------------------------------------------------------------------
-file(GLOB C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
-file(GLOB CU_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
+if(UNIX)
+  if(APPLE)
+    set(CUPDLPX_RPATH_ORIGIN "@loader_path")
+  else()
+    set(CUPDLPX_RPATH_ORIGIN "$ORIGIN")
+  endif()
+  file(RELATIVE_PATH CUPDLPX_LIBDIR_FROM_BINDIR
+    "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_LIBDIR}")
+endif()
+
+file(GLOB C_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
+file(GLOB CU_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
 list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/cli.c")
 
 set(CORE_INCLUDE_DIRS
@@ -267,6 +269,9 @@ if(CUPDLPX_BUILD_SHARED_LIB)
         OUTPUT_NAME "cupdlpx"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
+    if(UNIX)
+      set_property(TARGET cupdlpx_shared APPEND PROPERTY INSTALL_RPATH "${CUPDLPX_RPATH_ORIGIN}")
+    endif()
     if(USE_HIP)
       set_target_properties(cupdlpx_shared PROPERTIES
         HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}"
@@ -292,6 +297,10 @@ if(CUPDLPX_BUILD_CLI)
         OUTPUT_NAME "cupdlpx"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
+    if(UNIX)
+      set_property(TARGET cupdlpx_cli APPEND PROPERTY INSTALL_RPATH
+        "${CUPDLPX_RPATH_ORIGIN}/${CUPDLPX_LIBDIR_FROM_BINDIR}")
+    endif()
     if(NOT USE_HIP)
       set_target_properties(cupdlpx_cli PROPERTIES
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
@@ -306,7 +315,8 @@ if(CUPDLPX_BUILD_TESTS)
     endif()
 
     enable_testing()
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cu")
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cu")
     foreach(TEST_SRC ${TEST_SOURCES})
         get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)
         add_executable(${TEST_NAME} ${TEST_SRC})
@@ -337,16 +347,19 @@ endif()
 
 # 6. Install Targets
 if (CUPDLPX_BUILD_PYTHON)
-    install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
 else()
     if(TARGET cupdlpx_core)
-        install(TARGETS cupdlpx_core ARCHIVE DESTINATION lib)
+        install(TARGETS cupdlpx_core ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
     endif()
     if(TARGET cupdlpx_shared)
-        install(TARGETS cupdlpx_shared LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+        install(TARGETS cupdlpx_shared
+          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
     if(TARGET cupdlpx_cli)
-        install(TARGETS cupdlpx_cli RUNTIME DESTINATION bin)
+        install(TARGETS cupdlpx_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
-    install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
 endif()

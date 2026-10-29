@@ -25,21 +25,18 @@ backend selection, and workspace reuse.
 
 ### CUDA
 
-CMake selects default architectures based on the CUDA version. To reduce
-binary size, specify the target architecture:
+By default CMake builds for every supported major CUDA architecture
+(`all-major`). To build only for the GPU in the build machine, pass `native`:
 
 ```bash
-cmake -B build -DCMAKE_CUDA_ARCHITECTURES=90
+cmake -B build -DCMAKE_CUDA_ARCHITECTURES=native
 cmake --build build --parallel
 ```
 
-Use an architecture supported by the installed CUDA toolkit and the deployment
-GPU.
-
 ### ROCm
 
-HIP builds require a target architecture. The default is `gfx90a`; override it
-for other devices:
+HIP builds use CMake's GPU architecture detection by default. Set the target
+architecture explicitly for headless builds or when targeting another device:
 
 ```bash
 cmake -B build \

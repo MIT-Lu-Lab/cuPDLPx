@@ -1,6 +1,6 @@
 # python_bindings/CMakeLists.txt
 
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.24)
 
 # sources
 set(PYBIND_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/_core_bindings.cpp)
@@ -38,8 +38,8 @@ install(TARGETS _cupdlpx_core
 )
 
 if(WIN32)
-  # Install runtime DLL dependencies next to the extension module so Python can
-  # resolve them without additional os.add_dll_directory(...) calls.
+  # Copy runtime DLLs known to CMake, such as PSLP. CUDA's imported targets are
+  # UNKNOWN libraries, so CUDA DLLs are provided by the user's toolkit/environment.
   install(FILES $<TARGET_RUNTIME_DLLS:_cupdlpx_core>
     DESTINATION cupdlpx
     OPTIONAL

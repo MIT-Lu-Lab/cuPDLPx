@@ -13,7 +13,7 @@ Build it from source with the C libraries.
 | Component | CUDA build | ROCm build |
 | --- | --- | --- |
 | Compiler | GCC and NVCC | GCC and `hipcc` |
-| Build system | CMake 3.20+ | CMake 3.20+ |
+| Build system | CMake 3.24+ | CMake 3.24+ |
 
 See [hardware requirements](../getting-started/index.md#hardware-requirements)
 for supported GPUs and required CUDA or ROCm versions.
@@ -36,6 +36,14 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --clean-first --parallel
 ```
 
+The default builds for every supported major CUDA architecture (`all-major`),
+so compiling takes a while. To compile faster for only the GPU in the build
+machine, pass `native`:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=native
+```
+
 The build selects the sparse matrix–vector backend from the cuSPARSE
 version:
 
@@ -43,9 +51,6 @@ version:
 | --- | --- |
 | CUDA 12.4–13.2 | `cusparseSpMV` |
 | CUDA 13.3+ | `cusparseSpMVOp` |
-
-To target a specific CUDA architecture, pass
-`-DCMAKE_CUDA_ARCHITECTURES=<architecture>` when configuring.
 
 ### ROCm
 

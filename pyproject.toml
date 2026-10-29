@@ -19,7 +19,7 @@ dependencies = ["numpy>=1.21", "scipy>=1.8"]
 
 [tool.scikit-build]
 build-dir = "build/{wheel_tag}"
-cmake.version = ">=3.21"
+cmake.version = ">=3.24"
 cmake.build-type = "Release"
 wheel.packages = ["python/cupdlpx"]
 sdist.include = [
@@ -35,7 +35,6 @@ sdist.include = [
 ]
 
 [tool.scikit-build.cmake.define]
-CMAKE_CUDA_ARCHITECTURES = "all"
 CMAKE_CUDA_STANDARD = "17"
 CUPDLPX_BUILD_PYTHON = "ON"
 CUPDLPX_BUILD_STATIC_LIB = "ON"
