@@ -278,7 +278,7 @@ if(CUPDLPX_BUILD_SHARED_LIB)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
     if(UNIX)
-      set_target_properties(cupdlpx_shared PROPERTIES INSTALL_RPATH "${CUPDLPX_RPATH_ORIGIN}")
+      set_property(TARGET cupdlpx_shared APPEND PROPERTY INSTALL_RPATH "${CUPDLPX_RPATH_ORIGIN}")
     endif()
     if(USE_HIP)
       set_target_properties(cupdlpx_shared PROPERTIES
@@ -306,8 +306,8 @@ if(CUPDLPX_BUILD_CLI)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
     if(UNIX)
-      set_target_properties(cupdlpx_cli PROPERTIES
-        INSTALL_RPATH "${CUPDLPX_RPATH_ORIGIN}/${CUPDLPX_LIBDIR_FROM_BINDIR}")
+      set_property(TARGET cupdlpx_cli APPEND PROPERTY INSTALL_RPATH
+        "${CUPDLPX_RPATH_ORIGIN}/${CUPDLPX_LIBDIR_FROM_BINDIR}")
     endif()
     if(NOT USE_HIP)
       set_target_properties(cupdlpx_cli PROPERTIES
@@ -323,7 +323,8 @@ if(CUPDLPX_BUILD_TESTS)
     endif()
 
     enable_testing()
-    file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cu")
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/*.c" "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cu")
     foreach(TEST_SRC ${TEST_SOURCES})
         get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)
         add_executable(${TEST_NAME} ${TEST_SRC})
