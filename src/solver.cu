@@ -56,7 +56,7 @@ static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state, co
 void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 void launch_restart_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
-static void create_reduction_storage(pdhg_solver_state_t *state, bool detect_infeasibility);
+static void create_reduction_storage(pdhg_solver_state_t *state);
 static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_problem,
                                                     const pdhg_parameters_t *params,
                                                     objective_sense_t original_objective_sense);
@@ -162,8 +162,6 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
     {
         state->infeas_ctx = infeasibility_context_create(state);
     }
-
-    create_reduction_storage(state, detect_infeasibility);
 
     // residuals of the starting point; also runs every check kernel once before the capture
     display_iteration_header(params);
@@ -669,6 +667,8 @@ static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_
                                               state->pdhg_dual_solution,
                                               state->dual_product);
 
+    create_reduction_storage(state);
+
     return state;
 }
 
@@ -1093,7 +1093,11 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     state->best_primal_weight = state->primal_weight;
 }
 
-static void create_reduction_storage(pdhg_solver_state_t *state, bool detect_infeasibility)
+// Sizes the reduction workspace by planning every reduction a solve may run.
+// The infeasibility reductions are included whether or not detection is on,
+// so the size depends on no setting; they are planned before the context
+// exists, which a size query never reads.
+static void create_reduction_storage(pdhg_solver_state_t *state)
 {
     size_t bytes = 0;
     launch_residual_reductions(state, &bytes, state->objective_vector, state->pdhg_primal_solution);
@@ -1101,8 +1105,7 @@ static void create_reduction_storage(pdhg_solver_state_t *state, bool detect_inf
     launch_restart_reductions(state, &bytes);
     launch_polish_fixed_point_reductions(state, &bytes, true);
     launch_polish_fixed_point_reductions(state, &bytes, false);
-    if (detect_infeasibility)
-        plan_infeasibility_reductions(state, &bytes);
+    plan_infeasibility_reductions(state, &bytes);
     reduce_temp_storage_create(state, bytes);
 }
 

@@ -155,10 +155,11 @@ void launch_candidate_reductions(const pdhg_solver_state_t *state, size_t *requi
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints;
     infeas_candidate_scalars_t *out = &state->scalars_d->infeas[c];
-    const double *d = ctx->D + (size_t)c * n; // the primal ray
-    const double *y = ctx->Y + (size_t)c * m; // the dual ray
-    const double *Ad = ctx->prod_m + (size_t)c * m;
-    const double *ATy = ctx->prod_n + (size_t)c * n;
+    // NULL while planning before the context exists; a size query never reads them
+    const double *d = ctx ? ctx->D + (size_t)c * n : NULL; // the primal ray
+    const double *y = ctx ? ctx->Y + (size_t)c * m : NULL; // the dual ray
+    const double *Ad = ctx ? ctx->prod_m + (size_t)c * m : NULL;
+    const double *ATy = ctx ? ctx->prod_n + (size_t)c * n : NULL;
     const double *objective = state->objective_vector;
     const double *variable_rescaling = state->variable_rescaling;
     const double *constraint_rescaling = state->constraint_rescaling;
@@ -438,7 +439,7 @@ void launch_primal_abs_reductions(const pdhg_solver_state_t *state, size_t *requ
     const int m = state->num_constraints;
     for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
     {
-        const double *p = state->infeas_ctx->prod_m + (size_t)c * m;
+        const double *p = state->infeas_ctx ? state->infeas_ctx->prod_m + (size_t)c * m : NULL;
         reduce_max(
             state,
             required_bytes,
@@ -453,7 +454,7 @@ void launch_dual_abs_reductions(const pdhg_solver_state_t *state, size_t *requir
     const int n = state->num_variables;
     for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
     {
-        const double *p = state->infeas_ctx->prod_n + (size_t)c * n;
+        const double *p = state->infeas_ctx ? state->infeas_ctx->prod_n + (size_t)c * n : NULL;
         reduce_max(
             state, required_bytes, n, DEVICE_FN(j) { return p[j]; }, &state->scalars_d->infeas[c].dual_ray.product_abs_max);
     }
