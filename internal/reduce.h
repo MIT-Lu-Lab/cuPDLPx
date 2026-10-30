@@ -29,35 +29,49 @@
 // The element function of a reduction: DEVICE_FN(i) { return ...; }
 #define DEVICE_FN(i) [=] __host__ __device__(int i)
 
-// Temporary storage of cub::DeviceReduce, sized once for the longest vector and
-// shared by every call. cub rejects a call that needs more.
-void reduce_temp_storage_create(pdhg_solver_state_t *state);
+// Temporary storage of cub::DeviceReduce, shared by every call. cub rejects a
+// call that needs more, and captured graphs keep its address, so it is sized
+// once by planning every reduction.
+void reduce_temp_storage_create(pdhg_solver_state_t *state, size_t bytes);
+
+// With required_bytes set, a reduction only raises it to the storage it needs.
+// Planning calls the same functions as execution, so cub sees the same types.
+// On Windows, nvcc rejects these lambdas in functions with internal linkage, so
+// functions that define reductions are not static.
 
 // out = sum over i < n of f(i).
-template <typename F> void reduce_sum(pdhg_solver_state_t *state, int n, F f, double *out)
+template <typename F> void reduce_sum(const pdhg_solver_state_t *state, size_t *required_bytes, int n, F f, double *out)
 {
     if (n <= 0)
     {
-        CUDA_CHECK(cudaMemsetAsync(out, 0, sizeof(double), state->stream));
+        if (!required_bytes)
+            CUDA_CHECK(cudaMemsetAsync(out, 0, sizeof(double), state->stream));
         return;
     }
     auto it = thrust::make_transform_iterator(thrust::counting_iterator<int>(0), f);
+    void *temp = required_bytes ? NULL : state->reduce_temp_d;
     size_t bytes = state->reduce_temp_bytes;
-    CUDA_CHECK(cub::DeviceReduce::Sum(state->reduce_temp_d, bytes, it, out, n, state->stream));
+    CUDA_CHECK(cub::DeviceReduce::Sum(temp, bytes, it, out, n, state->stream));
+    if (required_bytes && bytes > *required_bytes)
+        *required_bytes = bytes;
 }
 
 // out = max over i < n of f(i); 0 when n is 0, since every maximum taken here is
 // nonnegative.
-template <typename F> void reduce_max(pdhg_solver_state_t *state, int n, F f, double *out)
+template <typename F> void reduce_max(const pdhg_solver_state_t *state, size_t *required_bytes, int n, F f, double *out)
 {
     if (n <= 0)
     {
-        CUDA_CHECK(cudaMemsetAsync(out, 0, sizeof(double), state->stream));
+        if (!required_bytes)
+            CUDA_CHECK(cudaMemsetAsync(out, 0, sizeof(double), state->stream));
         return;
     }
     auto it = thrust::make_transform_iterator(thrust::counting_iterator<int>(0), f);
+    void *temp = required_bytes ? NULL : state->reduce_temp_d;
     size_t bytes = state->reduce_temp_bytes;
-    CUDA_CHECK(cub::DeviceReduce::Max(state->reduce_temp_d, bytes, it, out, n, state->stream));
+    CUDA_CHECK(cub::DeviceReduce::Max(temp, bytes, it, out, n, state->stream));
+    if (required_bytes && bytes > *required_bytes)
+        *required_bytes = bytes;
 }
 
 #endif // CUPDLPX_REDUCE_H

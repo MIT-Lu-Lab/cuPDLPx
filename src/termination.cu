@@ -105,6 +105,26 @@ void fetch_device_scalars(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaStreamSynchronize(state->stream));
 }
 
+void launch_residual_reductions(const pdhg_solver_state_t *state,
+                                size_t *required_bytes,
+                                const double *objective_vector,
+                                const double *primal_solution)
+{
+    device_scalars_t *out = state->scalars_d;
+    const int m = state->num_constraints, n = state->num_variables;
+    const double *primal_residual = state->primal_residual, *primal_slack = state->primal_slack;
+    const double *dual_residual = state->dual_residual, *dual_slack = state->dual_slack;
+    const double *objective = objective_vector, *x = primal_solution;
+    reduce_sum(
+        state, required_bytes, m, DEVICE_FN(i) { return primal_residual[i] * primal_residual[i]; }, &out->primal_res_sq);
+    reduce_max(state, required_bytes, m, DEVICE_FN(i) { return fabs(primal_residual[i]); }, &out->primal_res_max);
+    reduce_sum(state, required_bytes, m, DEVICE_FN(i) { return primal_slack[i]; }, &out->primal_slack_sum);
+    reduce_sum(state, required_bytes, n, DEVICE_FN(j) { return dual_residual[j] * dual_residual[j]; }, &out->dual_res_sq);
+    reduce_max(state, required_bytes, n, DEVICE_FN(j) { return fabs(dual_residual[j]); }, &out->dual_res_max);
+    reduce_sum(state, required_bytes, n, DEVICE_FN(j) { return objective[j] * x[j]; }, &out->objective_dot);
+    reduce_sum(state, required_bytes, n, DEVICE_FN(j) { return dual_slack[j] * x[j]; }, &out->dual_slack_dot);
+}
+
 void launch_residual_check(pdhg_solver_state_t *state,
                            const double *objective_vector,
                            const double *primal_solution,
@@ -129,18 +149,7 @@ void launch_residual_check(pdhg_solver_state_t *state,
         state->num_constraints,
         state->num_variables);
 
-    device_scalars_t *out = state->scalars_d;
-    const int m = state->num_constraints, n = state->num_variables;
-    const double *primal_residual = state->primal_residual, *primal_slack = state->primal_slack;
-    const double *dual_residual = state->dual_residual, *dual_slack = state->dual_slack;
-    const double *objective = objective_vector, *x = primal_solution;
-    reduce_sum(state, m, DEVICE_FN(i) { return primal_residual[i] * primal_residual[i]; }, &out->primal_res_sq);
-    reduce_max(state, m, DEVICE_FN(i) { return fabs(primal_residual[i]); }, &out->primal_res_max);
-    reduce_sum(state, m, DEVICE_FN(i) { return primal_slack[i]; }, &out->primal_slack_sum);
-    reduce_sum(state, n, DEVICE_FN(j) { return dual_residual[j] * dual_residual[j]; }, &out->dual_res_sq);
-    reduce_max(state, n, DEVICE_FN(j) { return fabs(dual_residual[j]); }, &out->dual_res_max);
-    reduce_sum(state, n, DEVICE_FN(j) { return objective[j] * x[j]; }, &out->objective_dot);
-    reduce_sum(state, n, DEVICE_FN(j) { return dual_slack[j] * x[j]; }, &out->dual_slack_dot);
+    launch_residual_reductions(state, NULL, objective_vector, primal_solution);
 }
 
 void compute_residual_device(pdhg_solver_state_t *state)
@@ -182,6 +191,25 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
     compute_residual_host(state, optimality_norm);
 }
 
+void launch_fixed_point_reductions(const pdhg_solver_state_t *state, size_t *required_bytes)
+{
+    // the squared norms of the two steps and the interaction term of the
+    // primal step with A^T times the dual step
+    device_scalars_t *out = state->scalars_d;
+    const int m = state->num_constraints, n = state->num_variables;
+    const double *delta_primal = state->delta_primal_solution, *delta_dual = state->delta_dual_solution;
+    const double *delta_dual_product = state->delta_dual_product;
+    reduce_sum(state, required_bytes, m, DEVICE_FN(i) { return delta_dual[i] * delta_dual[i]; }, &out->fixed_point_dual_sq);
+    reduce_sum(
+        state, required_bytes, n, DEVICE_FN(j) { return delta_primal[j] * delta_primal[j]; }, &out->fixed_point_primal_sq);
+    reduce_sum(
+        state,
+        required_bytes,
+        n,
+        DEVICE_FN(j) { return delta_dual_product[j] * delta_primal[j]; },
+        &out->fixed_point_cross);
+}
+
 // Queues the fixed point error of the current iterate.
 void compute_fixed_point_error_device(pdhg_solver_state_t *state)
 {
@@ -193,15 +221,7 @@ void compute_fixed_point_error_device(pdhg_solver_state_t *state)
 
     cupdlpx_spmv_ATx(state->sparse_handle, state->spmv_ctx, state->delta_dual_solution, state->delta_dual_product);
 
-    // the squared norms of the two steps and the interaction term of the
-    // primal step with A^T times the dual step
-    device_scalars_t *out = state->scalars_d;
-    const int m = state->num_constraints, n = state->num_variables;
-    const double *delta_primal = state->delta_primal_solution, *delta_dual = state->delta_dual_solution;
-    const double *delta_dual_product = state->delta_dual_product;
-    reduce_sum(state, m, DEVICE_FN(i) { return delta_dual[i] * delta_dual[i]; }, &out->fixed_point_dual_sq);
-    reduce_sum(state, n, DEVICE_FN(j) { return delta_primal[j] * delta_primal[j]; }, &out->fixed_point_primal_sq);
-    reduce_sum(state, n, DEVICE_FN(j) { return delta_dual_product[j] * delta_primal[j]; }, &out->fixed_point_cross);
+    launch_fixed_point_reductions(state, NULL);
 }
 
 void compute_fixed_point_error_host(pdhg_solver_state_t *state)

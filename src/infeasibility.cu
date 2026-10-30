@@ -150,15 +150,16 @@ __global__ void form_dual_candidates_kernel(candidate_directions_t directions,
 
 // First-round scalars of candidate c. Violations are reduced in the rescaled
 // space, which decides the certificate, and in original units, which are reported.
-void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
+void launch_candidate_reductions(const pdhg_solver_state_t *state, size_t *required_bytes, int c)
 {
     infeas_ctx_t *ctx = state->infeas_ctx;
     const int n = state->num_variables, m = state->num_constraints;
     infeas_candidate_scalars_t *out = &state->scalars_d->infeas[c];
-    const double *d = ctx->D + (size_t)c * n; // the primal ray
-    const double *y = ctx->Y + (size_t)c * m; // the dual ray
-    const double *Ad = ctx->prod_m + (size_t)c * m;
-    const double *ATy = ctx->prod_n + (size_t)c * n;
+    // NULL while planning before the context exists; a size query never reads them
+    const double *d = ctx ? ctx->D + (size_t)c * n : NULL; // the primal ray
+    const double *y = ctx ? ctx->Y + (size_t)c * m : NULL; // the dual ray
+    const double *Ad = ctx ? ctx->prod_m + (size_t)c * m : NULL;
+    const double *ATy = ctx ? ctx->prod_n + (size_t)c * n : NULL;
     const double *objective = state->objective_vector;
     const double *variable_rescaling = state->variable_rescaling;
     const double *constraint_rescaling = state->constraint_rescaling;
@@ -179,11 +180,11 @@ void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
     { return primal_ray_row_violation(Ad[i], isfinite(constraint_lower[i]), isfinite(constraint_upper[i])); };
     auto row_violation_orig = DEVICE_FN(i) { return row_violation(i) * constraint_rescaling[i]; };
 
-    reduce_max(state, n, d_abs_orig, &out->primal_ray.max_abs);
-    reduce_sum(state, n, objective_term, &out->primal_ray.obj);
-    reduce_sum(state, n, objective_term_abs, &out->primal_ray.obj_abs);
-    reduce_max(state, m, row_violation, &out->primal_ray.viol_max_scaled);
-    reduce_max(state, m, row_violation_orig, &out->primal_ray.viol_max_orig);
+    reduce_max(state, required_bytes, n, d_abs_orig, &out->primal_ray.max_abs);
+    reduce_sum(state, required_bytes, n, objective_term, &out->primal_ray.obj);
+    reduce_sum(state, required_bytes, n, objective_term_abs, &out->primal_ray.obj_abs);
+    reduce_max(state, required_bytes, m, row_violation, &out->primal_ray.viol_max_scaled);
+    reduce_max(state, required_bytes, m, row_violation_orig, &out->primal_ray.viol_max_orig);
 
     // dual ray y and its reduced cost r = -A^T y
     auto y_abs_orig = DEVICE_FN(i) { return fabs(y[i]) / (constraint_rescaling[i] * objective_rescaling); };
@@ -199,13 +200,13 @@ void launch_candidate_reductions(pdhg_solver_state_t *state, int c)
     { return dual_ray_reduced_cost_violation(-ATy[j], isfinite(variable_lower[j]), isfinite(variable_upper[j])); };
     auto reduced_cost_violation_orig = DEVICE_FN(j) { return reduced_cost_violation(j) * variable_rescaling[j]; };
 
-    reduce_max(state, m, y_abs_orig, &out->dual_ray.max_abs);
-    reduce_sum(state, m, con_bounds_term, &out->dual_ray.obj_con_bounds);
-    reduce_sum(state, n, var_bounds_term, &out->dual_ray.obj_var_bounds);
-    reduce_sum(state, m, con_bounds_term_abs, &out->dual_ray.obj_con_bounds_abs);
-    reduce_sum(state, n, var_bounds_term_abs, &out->dual_ray.obj_var_bounds_abs);
-    reduce_max(state, n, reduced_cost_violation, &out->dual_ray.viol_max_scaled);
-    reduce_max(state, n, reduced_cost_violation_orig, &out->dual_ray.viol_max_orig);
+    reduce_max(state, required_bytes, m, y_abs_orig, &out->dual_ray.max_abs);
+    reduce_sum(state, required_bytes, m, con_bounds_term, &out->dual_ray.obj_con_bounds);
+    reduce_sum(state, required_bytes, n, var_bounds_term, &out->dual_ray.obj_var_bounds);
+    reduce_sum(state, required_bytes, m, con_bounds_term_abs, &out->dual_ray.obj_con_bounds_abs);
+    reduce_sum(state, required_bytes, n, var_bounds_term_abs, &out->dual_ray.obj_var_bounds_abs);
+    reduce_max(state, required_bytes, n, reduced_cost_violation, &out->dual_ray.viol_max_scaled);
+    reduce_max(state, required_bytes, n, reduced_cost_violation_orig, &out->dual_ray.viol_max_orig);
 }
 
 static void spmm_buffer(
@@ -385,7 +386,7 @@ void compute_infeasibility_device(pdhg_solver_state_t *state)
     // everything that needs D, Y or the products, before the second round overwrites them
     for (int c = 0; c < K; c++)
     {
-        launch_candidate_reductions(state, c);
+        launch_candidate_reductions(state, NULL, c);
     }
 }
 
@@ -433,6 +434,40 @@ evaluate_objective_margins(const pdhg_solver_state_t *state, double objective_ma
     }
 }
 
+void launch_primal_abs_reductions(const pdhg_solver_state_t *state, size_t *required_bytes)
+{
+    const int m = state->num_constraints;
+    for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
+    {
+        const double *p = state->infeas_ctx ? state->infeas_ctx->prod_m + (size_t)c * m : NULL;
+        reduce_max(
+            state,
+            required_bytes,
+            m,
+            DEVICE_FN(i) { return p[i]; },
+            &state->scalars_d->infeas[c].primal_ray.product_abs_max);
+    }
+}
+
+void launch_dual_abs_reductions(const pdhg_solver_state_t *state, size_t *required_bytes)
+{
+    const int n = state->num_variables;
+    for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
+    {
+        const double *p = state->infeas_ctx ? state->infeas_ctx->prod_n + (size_t)c * n : NULL;
+        reduce_max(
+            state, required_bytes, n, DEVICE_FN(j) { return p[j]; }, &state->scalars_d->infeas[c].dual_ray.product_abs_max);
+    }
+}
+
+void plan_infeasibility_reductions(const pdhg_solver_state_t *state, size_t *required_bytes)
+{
+    for (int c = 0; c < INFEAS_NUM_CANDIDATES; c++)
+        launch_candidate_reductions(state, required_bytes, c);
+    launch_primal_abs_reductions(state, required_bytes);
+    launch_dual_abs_reductions(state, required_bytes);
+}
+
 // Second round for the sides that need it: D becomes |D| in place and prod_m
 // becomes |A||D|; likewise on the dual side.
 void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual_side)
@@ -444,21 +479,13 @@ void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual
     {
         abs_kernel<<<state->num_blocks_primal * K, THREADS_PER_BLOCK, 0, state->stream>>>(ctx->D, ctx->D, n * K);
         spmm(state->sparse_handle, ctx->matAbsA, ctx->dnD, ctx->dnProdM, ctx->buf_absA);
-        for (int c = 0; c < K; c++)
-        {
-            const double *p = ctx->prod_m + (size_t)c * m;
-            reduce_max(state, m, DEVICE_FN(i) { return p[i]; }, &state->scalars_d->infeas[c].primal_ray.product_abs_max);
-        }
+        launch_primal_abs_reductions(state, NULL);
     }
     if (dual_side)
     {
         abs_kernel<<<state->num_blocks_dual * K, THREADS_PER_BLOCK, 0, state->stream>>>(ctx->Y, ctx->Y, m * K);
         spmm(state->sparse_handle, ctx->matAbsAT, ctx->dnY, ctx->dnProdN, ctx->buf_absAT);
-        for (int c = 0; c < K; c++)
-        {
-            const double *p = ctx->prod_n + (size_t)c * n;
-            reduce_max(state, n, DEVICE_FN(j) { return p[j]; }, &state->scalars_d->infeas[c].dual_ray.product_abs_max);
-        }
+        launch_dual_abs_reductions(state, NULL);
     }
 }
 

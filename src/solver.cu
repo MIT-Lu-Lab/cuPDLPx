@@ -54,7 +54,9 @@ __global__ void rescale_solution_kernel(double *__restrict__ primal_solution,
                                         int n_cons);
 static cupdlpx_result_t *create_result_from_state(pdhg_solver_state_t *state, const lp_problem_t *original_problem);
 void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
+void launch_restart_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
+static void create_reduction_storage(pdhg_solver_state_t *state);
 static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_problem,
                                                     const pdhg_parameters_t *params,
                                                     objective_sense_t original_objective_sense);
@@ -657,7 +659,6 @@ static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_
     CUDA_CHECK(cudaStreamCreate(&state->stream));
     CUSPARSE_CHECK(cusparseSetStream(state->sparse_handle, state->stream));
     CUBLAS_CHECK(cublasSetStream(state->blas_handle, state->stream));
-    reduce_temp_storage_create(state);
 
     state->spmv_ctx = cupdlpx_spmv_ctx_create(state->sparse_handle,
                                               state->constraint_matrix,
@@ -666,6 +667,8 @@ static pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_
                                               state->primal_product,
                                               state->pdhg_dual_solution,
                                               state->dual_product);
+
+    create_reduction_storage(state);
 
     return state;
 }
@@ -969,17 +972,7 @@ void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params
                                 state->initial_dual_solution,
                                 state->pdhg_dual_solution);
 
-    const double *delta_primal = state->delta_primal_solution, *delta_dual = state->delta_dual_solution;
-    reduce_sum(
-        state,
-        state->num_variables,
-        DEVICE_FN(j) { return delta_primal[j] * delta_primal[j]; },
-        &state->scalars_d->restart_primal_sq);
-    reduce_sum(
-        state,
-        state->num_constraints,
-        DEVICE_FN(i) { return delta_dual[i] * delta_dual[i]; },
-        &state->scalars_d->restart_dual_sq);
+    launch_restart_reductions(state, NULL);
     fetch_device_scalars(state);
     double primal_dist = sqrt(state->scalars_h->restart_primal_sq);
     double dual_dist = sqrt(state->scalars_h->restart_dual_sq);
@@ -1043,6 +1036,23 @@ void perform_restart(pdhg_solver_state_t *state, const pdhg_parameters_t *params
     sync_step_sizes_to_gpu(state);
 }
 
+void launch_restart_reductions(const pdhg_solver_state_t *state, size_t *required_bytes)
+{
+    const double *delta_primal = state->delta_primal_solution, *delta_dual = state->delta_dual_solution;
+    reduce_sum(
+        state,
+        required_bytes,
+        state->num_variables,
+        DEVICE_FN(j) { return delta_primal[j] * delta_primal[j]; },
+        &state->scalars_d->restart_primal_sq);
+    reduce_sum(
+        state,
+        required_bytes,
+        state->num_constraints,
+        DEVICE_FN(i) { return delta_dual[i] * delta_dual[i]; },
+        &state->scalars_d->restart_dual_sq);
+}
+
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
     if (state->constraint_matrix->num_nonzeros == 0)
@@ -1082,6 +1092,22 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
         state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
     }
     state->best_primal_weight = state->primal_weight;
+}
+
+// Sizes the reduction workspace by planning every reduction a solve may run.
+// The infeasibility reductions are included whether or not detection is on,
+// so the size depends on no setting; they are planned before the context
+// exists, which a size query never reads.
+static void create_reduction_storage(pdhg_solver_state_t *state)
+{
+    size_t bytes = 0;
+    launch_residual_reductions(state, &bytes, state->objective_vector, state->pdhg_primal_solution);
+    launch_fixed_point_reductions(state, &bytes);
+    launch_restart_reductions(state, &bytes);
+    launch_polish_fixed_point_reductions(state, &bytes, true);
+    launch_polish_fixed_point_reductions(state, &bytes, false);
+    plan_infeasibility_reductions(state, &bytes);
+    reduce_temp_storage_create(state, bytes);
 }
 
 void pdhg_solver_state_free(pdhg_solver_state_t *state)

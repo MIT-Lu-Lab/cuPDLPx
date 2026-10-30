@@ -33,12 +33,18 @@ extern "C"
 
     void infeasibility_context_destroy(infeas_ctx_t *ctx);
 
+    // Raises required_bytes to the reductions of both rounds, even when a
+    // second-round side is not needed initially; see reduce.h.
+    void plan_infeasibility_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
+
     void compute_infeasibility_device(pdhg_solver_state_t *state);
 
     void compute_infeasibility_host(pdhg_solver_state_t *state, double objective_margin);
 
-    void launch_candidate_reductions(pdhg_solver_state_t *state, int c);
+    void launch_candidate_reductions(const pdhg_solver_state_t *state, size_t *required_bytes, int c);
     void launch_abs_products(pdhg_solver_state_t *state, bool primal_side, bool dual_side);
+    void launch_primal_abs_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
+    void launch_dual_abs_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
 
 #ifdef __cplusplus
 }
