@@ -1,0 +1,83 @@
+name: GPU tests (simulated)
+
+# Optional, non-required check. The runners have no GPU, so this builds the
+# Python bindings and runs the pytest suite on a simulated NVIDIA A100
+# (https://github.com/pantheongpu/pantheonsim). A simulator cannot reproduce
+# hardware-specific behaviour or timing, so it complements real-GPU testing and
+# does not replace it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu-sim-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gpu-tests:
+    name: pytest on a simulated A100
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up the simulated GPU and CUDA toolkit
+        uses: pantheongpu/setup-pantheonsim@dda0c8df8d72627c295edbae525354ba2bcb1687 # v0.1.4
+        with:
+          gpu: nvidia/a100
+          cuda-toolkit: "13.0"
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build zlib1g-dev
+          python3 -m venv .venv
+          .venv/bin/pip install pybind11 numpy scipy pytest
+
+      - name: Configure
+        run: |
+          # 80-virtual embeds PTX only: the simulator JIT-compiles PTX and does not run SASS.
+          # The shared CUDA runtime is required: the simulator rejects the static one.
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCUPDLPX_BUILD_PYTHON=ON \
+            -DCUPDLPX_BUILD_SHARED_LIB=OFF \
+            -DCUPDLPX_BUILD_CLI=OFF \
+            -DCMAKE_CUDA_ARCHITECTURES=80-virtual \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Shared \
+            -DPython3_EXECUTABLE="$PWD/.venv/bin/python" \
+            -Dpybind11_DIR="$($PWD/.venv/bin/python -m pybind11 --cmakedir)"
+
+      - name: Build
+        run: vgpu run --preload cmake --build build -j2
+
+      - name: Assemble the Python package
+        run: |
+          mkdir -p pkg
+          cp -r python/cupdlpx pkg/
+          cp build/python_bindings/_cupdlpx_core*.so pkg/cupdlpx/
+          # The extension's rpath is $ORIGIN/../lib, where the wheel install puts libPSLP.
+          mkdir -p pkg/lib
+          find build -name 'libPSLP.so*' -exec cp -P {} pkg/lib/ \;
+
+      # The solves run on the simulated GPU, with cuSPARSE and cuBLAS provided by
+      # the simulator's shims. test_time_limit is skipped: it asserts that a
+      # 0.1 s time limit is honoured within 1 s of wall-clock time, which depends
+      # on GPU speed and the simulator is much slower than real hardware.
+      # -o addopts="" drops the coverage options from pyproject.toml.
+      - name: Test
+        working-directory: test
+        env:
+          PYTHONPATH: ${{ github.workspace }}/pkg
+        run: |
+          vgpu run ../.venv/bin/python -m pytest -v -o addopts="" -p no:cacheprovider \
+            -k "not test_time_limit" .
