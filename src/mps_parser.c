@@ -167,13 +167,29 @@ typedef struct
     char *end_pos;
 } FastLineReader;
 
+/* Case-insensitive suffix match; suffix must be lowercase. */
+static bool has_suffix(const char *s, const char *suffix)
+{
+    size_t n = strlen(s);
+    size_t k = strlen(suffix);
+    if (n < k)
+        return false;
+    s += n - k;
+    for (size_t i = 0; i < k; ++i)
+    {
+        if (tolower((unsigned char)s[i]) != suffix[i])
+            return false;
+    }
+    return true;
+}
+
 static FastLineReader *fast_reader_open(const char *filename)
 {
     FastLineReader *reader = safe_calloc(1, sizeof(FastLineReader));
 
     reader->buffer = safe_malloc(READER_BUFFER_SIZE);
 
-    if (strlen(filename) > 3 && strcmp(filename + strlen(filename) - 3, ".gz") == 0)
+    if (has_suffix(filename, ".gz"))
     {
         reader->is_gz = true;
         reader->handle.gz_f = gzopen(filename, "rb");
@@ -429,6 +445,13 @@ lp_problem_t *read_mps_file(const char *filename)
     MpsParserState state = {0};
     MpsSection current_section = SEC_NONE;
     bool rows_finalized = false;
+    bool seen_rows = false;
+
+    if (!has_suffix(filename, ".mps") && !has_suffix(filename, ".mps.gz"))
+    {
+        fprintf(stderr, "ERROR: %s is not an MPS file; only .mps and .mps.gz are supported.\n", filename);
+        return NULL;
+    }
 
     FastLineReader *reader = fast_reader_open(filename);
     if (!reader)
@@ -523,6 +546,8 @@ lp_problem_t *read_mps_file(const char *filename)
                 }
 
                 current_section = next_section;
+                if (current_section == SEC_ROWS)
+                    seen_rows = true;
                 if (current_section == SEC_ENDATA)
                     break;
 
@@ -576,6 +601,14 @@ lp_problem_t *read_mps_file(const char *filename)
     }
 
     fast_reader_close(reader);
+
+    /* Unrecognized lines outside any section are skipped, so a file in another
+     * format (e.g. LP) would otherwise parse as an empty model. */
+    if (!state.error_flag && !seen_rows)
+    {
+        fprintf(stderr, "ERROR: No ROWS section found in %s; is it an MPS file?\n", filename);
+        state.error_flag = 1;
+    }
 
     if (state.error_flag)
     {

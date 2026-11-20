@@ -324,3 +324,42 @@ def test_read_unsupported_section_raises(tmp_path):
     """
     with pytest.raises(Exception):
         _read_text(tmp_path, "quadobj.mps", MPS_QUADOBJ)
+
+
+
+# The same LP as MPS_MIN, in CPLEX LP format
+LP_MIN = """\\ TESTLP
+Minimize
+ COST: X1 + X2
+Subject To
+ R1: X1 + 2 X2 = 5
+ R2: X2 <= 2
+ R3: 3 X1 + 2 X2 <= 8
+End
+"""
+
+
+@pytest.mark.parametrize("name", ["min.lp", "min.txt", "min"])
+def test_read_non_mps_extension_raises(tmp_path, name):
+    """
+    Only .mps and .mps.gz files are read; any other extension is rejected
+    before the file is parsed, even if its content is valid MPS.
+    """
+    with pytest.raises(RuntimeError):
+        _read_text(tmp_path, name, MPS_MIN)
+
+
+def test_read_mps_extension_is_case_insensitive(tmp_path):
+    model = _read_text(tmp_path, "MIN.MPS", MPS_MIN)
+    _check_min_model_data(model)
+
+
+@pytest.mark.parametrize("text", [LP_MIN, "", "hello world\n"])
+def test_read_non_mps_content_raises(tmp_path, text):
+    """
+    A .mps file without a ROWS section is not MPS and must raise instead
+    of being read as an empty model.
+    """
+    with pytest.raises(RuntimeError):
+        _read_text(tmp_path, "bad.mps", text)
+
