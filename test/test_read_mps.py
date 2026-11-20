@@ -363,3 +363,34 @@ def test_read_non_mps_content_raises(tmp_path, text):
     with pytest.raises(RuntimeError):
         _read_text(tmp_path, "bad.mps", text)
 
+
+# A second N row is a free row: its entries are ignored, not an error.
+MPS_FREE_ROW = (
+    MPS_MIN.replace(" L  R3\n", " L  R3\n N  AUX\n")
+    .replace("    X1        R3        3.0\n", "    X1        R3        3.0   AUX       9.0\n")
+    .replace("    RHS       R3        8.0\n", "    RHS       R3        8.0   AUX       1.0\n")
+)
+
+
+def test_read_free_row_is_ignored(tmp_path):
+    model = _read_text(tmp_path, "free.mps", MPS_FREE_ROW)
+    _check_min_model_data(model)
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("    X1        R3        3.0\n", "    X1        R4        3.0\n"),  # COLUMNS
+        ("    RHS       R3        8.0\n", "    RHS       R4        8.0\n"),  # RHS
+        ("    RHS       R3        8.0\n", "    R4        8.0\n"),  # RHS, no set name
+        ("ENDATA\n", "RANGES\n    RNG       R4        1.0\nENDATA\n"),  # RANGES
+        (" L  R3\n", " X  R3\n"),  # unknown row type
+    ],
+)
+def test_read_undeclared_row_raises(tmp_path, old, new):
+    """
+    An entry for a row not declared in ROWS must raise instead of being
+    silently dropped.
+    """
+    with pytest.raises(RuntimeError):
+        _read_text(tmp_path, "undeclared.mps", MPS_MIN.replace(old, new))

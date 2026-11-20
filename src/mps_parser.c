@@ -323,6 +323,7 @@ typedef struct
 
     NameMap row_map;
     NameMap col_map;
+    NameMap free_row_map; /* N rows other than the objective; their entries are ignored */
 
     CooMatrix coo_matrix;
     BufferedRow *buffered_rows;
@@ -462,6 +463,7 @@ lp_problem_t *read_mps_file(const char *filename)
 
     namemap_init(&state.row_map, 1024);
     namemap_init(&state.col_map, 1024);
+    namemap_init(&state.free_row_map, 16);
 
     char line[4096];
     while (fast_reader_gets(reader, line, sizeof(line)))
@@ -712,7 +714,12 @@ static int finalize_rows(MpsParserState *state)
             continue;
 
         char type = state->buffered_rows[i].type;
-        if (type == 'E' || type == 'L' || type == 'G')
+        if (type == 'N')
+        {
+            if (namemap_put(&state->free_row_map, state->buffered_rows[i].name) == -1)
+                return -1;
+        }
+        else if (type == 'E' || type == 'L' || type == 'G')
         {
             size_t current_size = state->row_map.size;
             if (current_size >= state->constraint_capacity)
@@ -723,6 +730,11 @@ static int finalize_rows(MpsParserState *state)
             }
             namemap_put(&state->row_map, state->buffered_rows[i].name);
             state->constraint_types[current_size] = type;
+        }
+        else
+        {
+            fprintf(stderr, "ERROR: Row %s has unknown type %c in ROWS section.\n", state->buffered_rows[i].name, type);
+            return -1;
         }
     }
     size_t num_constraints = state->row_map.size;
@@ -752,6 +764,11 @@ static int finalize_rows(MpsParserState *state)
         }
     }
     return 0;
+}
+
+static bool is_free_row(const MpsParserState *state, const char *name)
+{
+    return namemap_get(&state->free_row_map, name) != -1;
 }
 
 static int parse_columns_section(MpsParserState *state, char **tokens, int n_tokens)
@@ -824,6 +841,11 @@ static int parse_columns_section(MpsParserState *state, char **tokens, int n_tok
                     return -1;
                 }
             }
+            else if (!is_free_row(state, row_name))
+            {
+                fprintf(stderr, "ERROR: Row %s in COLUMNS section is not declared in ROWS.\n", row_name);
+                return -1;
+            }
         }
     }
     return 0;
@@ -837,18 +859,29 @@ static bool is_known_row(const MpsParserState *state, const char *name)
 {
     if (state->objective_row_name && strcmp(name, state->objective_row_name) == 0)
         return true;
-    return namemap_get(&state->row_map, name) != -1;
+    return namemap_get(&state->row_map, name) != -1 || is_free_row(state, name);
 }
 
-static int row_data_start(const MpsParserState *state, char **tokens, int n_tokens)
+// Returns -1 when the fields after the set name are not (row, value) pairs,
+// e.g. a line without a set name whose row is not declared in ROWS.
+static int row_data_start(const MpsParserState *state, char **tokens, int n_tokens, const char *section)
 {
-    return (n_tokens > 0 && is_known_row(state, tokens[0])) ? 0 : 1;
+    int start = (n_tokens > 0 && is_known_row(state, tokens[0])) ? 0 : 1;
+    if ((n_tokens - start) % 2 != 0)
+    {
+        fprintf(stderr, "ERROR: Malformed %s line starting with %s (undeclared row?).\n", section, tokens[0]);
+        return -1;
+    }
+    return start;
 }
 
 static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
 {
+    int start = row_data_start(state, tokens, n_tokens, "RHS");
+    if (start < 0)
+        return -1;
 
-    for (int i = row_data_start(state, tokens, n_tokens); i + 1 < n_tokens; i += 2)
+    for (int i = start; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double value = atof(tokens[i + 1]);
@@ -873,6 +906,11 @@ static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
                     state->constraint_upper_bounds[row_idx] = value;
                 }
             }
+            else if (!is_free_row(state, row_name))
+            {
+                fprintf(stderr, "ERROR: Row %s in RHS section is not declared in ROWS.\n", row_name);
+                return -1;
+            }
         }
     }
     return 0;
@@ -880,8 +918,11 @@ static int parse_rhs_section(MpsParserState *state, char **tokens, int n_tokens)
 
 static int parse_ranges_section(MpsParserState *state, char **tokens, int n_tokens)
 {
+    int start = row_data_start(state, tokens, n_tokens, "RANGES");
+    if (start < 0)
+        return -1;
 
-    for (int i = row_data_start(state, tokens, n_tokens); i + 1 < n_tokens; i += 2)
+    for (int i = start; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double range_val = atof(tokens[i + 1]);
@@ -912,6 +953,11 @@ static int parse_ranges_section(MpsParserState *state, char **tokens, int n_toke
                     state->constraint_lower_bounds[row_idx] = rhs + range_val;
                 }
             }
+        }
+        else if (!is_known_row(state, row_name))
+        {
+            fprintf(stderr, "ERROR: Row %s in RANGES section is not declared in ROWS.\n", row_name);
+            return -1;
         }
     }
     return 0;
@@ -1023,6 +1069,7 @@ static void free_parser_state(MpsParserState *state)
 
     namemap_free(&state->row_map);
     namemap_free(&state->col_map);
+    namemap_free(&state->free_row_map);
 
     if (state->buffered_rows)
     {
