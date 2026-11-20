@@ -79,12 +79,12 @@ __global__ void asb_row_window_kernel(const double *__restrict__ dual_projection
         bool safely_inside = true;
         if (isfinite(ub[j]))
         {
-            double margin = constraint_tol * fmax(1.0, fmax(fabs(q), fabs(ub[j])));
+            double margin = constraint_tol * fmax(1.0, fabs(ub[j]));
             safely_inside = safely_inside && (q + ub[j] > margin);
         }
         if (isfinite(lb[j]))
         {
-            double margin = constraint_tol * fmax(1.0, fmax(fabs(q), fabs(lb[j])));
+            double margin = constraint_tol * fmax(1.0, fabs(lb[j]));
             safely_inside = safely_inside && (-lb[j] - q > margin);
         }
         binding = !safely_inside;
