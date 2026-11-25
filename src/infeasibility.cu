@@ -218,7 +218,7 @@ static void spmm_buffer(
                                            &HOST_ZERO,
                                            out,
                                            CUDA_R_64F,
-                                           CUSPARSE_SPMM_ALG_DEFAULT,
+                                           CUSPARSE_SPMM_CSR_ALG3,
                                            &size));
     CUDA_CHECK(cudaMalloc(buffer, size > 0 ? size : 16));
 }
@@ -236,7 +236,7 @@ static void spmm_preprocess(
                                            &HOST_ZERO,
                                            out,
                                            CUDA_R_64F,
-                                           CUSPARSE_SPMM_ALG_DEFAULT,
+                                           CUSPARSE_SPMM_CSR_ALG3,
                                            buffer));
 }
 
@@ -252,7 +252,7 @@ spmm(cusparseHandle_t handle, cusparseSpMatDescr_t mat, cusparseDnMatDescr_t in,
                                 &HOST_ZERO,
                                 out,
                                 CUDA_R_64F,
-                                CUSPARSE_SPMM_ALG_DEFAULT,
+                                CUSPARSE_SPMM_CSR_ALG3,
                                 buffer));
 }
 
