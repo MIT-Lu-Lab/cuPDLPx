@@ -288,6 +288,12 @@ cupdlpx_result_t *optimize(const pdhg_parameters_t *params, const lp_problem_t *
         display_iteration_stats(state, params);
     }
 
+    if (state->infeas_ctx)
+    {
+        infeasibility_context_destroy(state->infeas_ctx);
+        state->infeas_ctx = NULL;
+    }
+
     if (params->feasibility_polishing && state->termination_reason != TERMINATION_REASON_DUAL_INFEASIBLE &&
         state->termination_reason != TERMINATION_REASON_PRIMAL_INFEASIBLE)
     {

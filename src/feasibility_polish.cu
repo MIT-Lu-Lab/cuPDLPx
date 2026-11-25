@@ -107,8 +107,17 @@ static void print_initial_feas_polish_info(bool is_primal_polish, const pdhg_par
     printf("---------------------------------------------------------------------------------------\n");
 }
 
+typedef struct
+{
+    termination_reason_t termination_reason;
+    int total_count;
+    double cumulative_time_sec;
+    double relative_residual;
+    double objective_value;
+} feas_polish_summary_t;
+
 static void
-pdhg_feas_polish_final_log(const pdhg_solver_state_t *primal_state, const pdhg_solver_state_t *dual_state, bool verbose)
+pdhg_feas_polish_final_log(const feas_polish_summary_t *primal, const feas_polish_summary_t *dual, bool verbose)
 {
     if (!verbose)
     {
@@ -116,17 +125,17 @@ pdhg_feas_polish_final_log(const pdhg_solver_state_t *primal_state, const pdhg_s
     }
     printf("---------------------------------------------------------------------------------------\n");
     printf("Feasibility Polishing Summary\n");
-    printf("  Primal Status        : %s\n", termination_reason_to_string(primal_state->termination_reason));
-    printf("  Primal Iterations    : %d\n", primal_state->total_count);
-    printf("  Primal Time Usage    : %.3g sec\n", primal_state->cumulative_time_sec);
-    printf("  Dual Status          : %s\n", termination_reason_to_string(dual_state->termination_reason));
-    printf("  Dual Iterations      : %d\n", dual_state->total_count);
-    printf("  Dual Time Usage      : %.3g sec\n", dual_state->cumulative_time_sec);
-    printf("  Primal Residual      : %.3e\n", primal_state->relative_primal_residual);
-    printf("  Dual Residual        : %.3e\n", dual_state->relative_dual_residual);
+    printf("  Primal Status        : %s\n", termination_reason_to_string(primal->termination_reason));
+    printf("  Primal Iterations    : %d\n", primal->total_count);
+    printf("  Primal Time Usage    : %.3g sec\n", primal->cumulative_time_sec);
+    printf("  Dual Status          : %s\n", termination_reason_to_string(dual->termination_reason));
+    printf("  Dual Iterations      : %d\n", dual->total_count);
+    printf("  Dual Time Usage      : %.3g sec\n", dual->cumulative_time_sec);
+    printf("  Primal Residual      : %.3e\n", primal->relative_residual);
+    printf("  Dual Residual        : %.3e\n", dual->relative_residual);
     printf("  Primal Dual Gap      : %.3e\n",
-           fabs(primal_state->primal_objective_value - dual_state->dual_objective_value) /
-               (1.0 + fabs(primal_state->primal_objective_value) + fabs(dual_state->dual_objective_value)));
+           fabs(primal->objective_value - dual->objective_value) /
+               (1.0 + fabs(primal->objective_value) + fabs(dual->objective_value)));
 }
 
 static void display_feas_polish_iteration_stats(const pdhg_solver_state_t *state, bool verbose, bool is_primal_polish)
@@ -278,6 +287,12 @@ void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *st
         state->primal_objective_value = primal_state->primal_objective_value;
     }
     state->feasibility_iteration += primal_state->total_count - 1;
+    feas_polish_summary_t primal_summary = {primal_state->termination_reason,
+                                            primal_state->total_count,
+                                            primal_state->cumulative_time_sec,
+                                            primal_state->relative_primal_residual,
+                                            primal_state->primal_objective_value};
+    primal_feas_polish_state_free(primal_state);
 
     // DUAL FEASIBILITY POLISHING
     pdhg_solver_state_t *dual_state = initialize_dual_feas_polish_state(state);
@@ -296,15 +311,19 @@ void feasibility_polish(const pdhg_parameters_t *params, pdhg_solver_state_t *st
         state->dual_objective_value = dual_state->dual_objective_value;
     }
     state->feasibility_iteration += dual_state->total_count - 1;
+    feas_polish_summary_t dual_summary = {dual_state->termination_reason,
+                                          dual_state->total_count,
+                                          dual_state->cumulative_time_sec,
+                                          dual_state->relative_dual_residual,
+                                          dual_state->dual_objective_value};
+    dual_feas_polish_state_free(dual_state);
 
     state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
     state->relative_objective_gap =
         state->objective_gap / (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
 
     // FINAL LOGGING
-    pdhg_feas_polish_final_log(primal_state, dual_state, params->verbose);
-    primal_feas_polish_state_free(primal_state);
-    dual_feas_polish_state_free(dual_state);
+    pdhg_feas_polish_final_log(&primal_summary, &dual_summary, params->verbose);
 
     state->feasibility_polishing_time = (double)(clock() - feasibility_polishing_start_time) / CLOCKS_PER_SEC;
     return;
@@ -528,14 +547,6 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(const pdhg_solve
     primal_state->relative_objective_gap = 0.0;
     primal_state->objective_gap = 0.0;
 
-    primal_state->spmv_ctx = cupdlpx_spmv_ctx_create(primal_state->sparse_handle,
-                                                     primal_state->constraint_matrix,
-                                                     primal_state->constraint_matrix_t,
-                                                     primal_state->pdhg_primal_solution,
-                                                     primal_state->primal_product,
-                                                     primal_state->pdhg_dual_solution,
-                                                     primal_state->dual_product);
-
     return primal_state;
 }
 
@@ -567,7 +578,6 @@ void primal_feas_polish_state_free(pdhg_solver_state_t *state)
     SAFE_CUDA_FREE(state->dual_residual);
     SAFE_CUDA_FREE(state->delta_primal_solution);
     SAFE_CUDA_FREE(state->delta_dual_solution);
-    cupdlpx_spmv_ctx_destroy(state->spmv_ctx);
     free(state);
 }
 
@@ -620,11 +630,6 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(const pdhg_solver_
     CUDA_CHECK(cudaMalloc(&dest, bytes));                                                                              \
     CUDA_CHECK(cudaMemset(dest, 0, bytes));
 
-    ALLOC_ZERO(dual_state->constraint_lower_bound_finite_val, num_cons * sizeof(double));
-    ALLOC_ZERO(dual_state->constraint_upper_bound_finite_val, num_cons * sizeof(double));
-    ALLOC_ZERO(dual_state->variable_lower_bound_finite_val, num_var * sizeof(double));
-    ALLOC_ZERO(dual_state->variable_upper_bound_finite_val, num_var * sizeof(double));
-
     // ALLOCATE AND COPY SOLUTION VECTORS
     ALLOC_AND_COPY_DEV(
         dual_state->initial_dual_solution, original_state->initial_dual_solution, num_cons * sizeof(double));
@@ -671,14 +676,6 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(const pdhg_solver_
     dual_state->relative_objective_gap = 0.0;
     dual_state->objective_gap = 0.0;
 
-    dual_state->spmv_ctx = cupdlpx_spmv_ctx_create(dual_state->sparse_handle,
-                                                   dual_state->constraint_matrix,
-                                                   dual_state->constraint_matrix_t,
-                                                   dual_state->pdhg_primal_solution,
-                                                   dual_state->primal_product,
-                                                   dual_state->pdhg_dual_solution,
-                                                   dual_state->dual_product);
-
     return dual_state;
 }
 
@@ -697,11 +694,6 @@ void dual_feas_polish_state_free(pdhg_solver_state_t *state)
     SAFE_CUDA_FREE(state->constraint_upper_bound);
     SAFE_CUDA_FREE(state->variable_lower_bound);
     SAFE_CUDA_FREE(state->variable_upper_bound);
-    SAFE_CUDA_FREE(state->constraint_lower_bound_finite_val);
-    SAFE_CUDA_FREE(state->constraint_upper_bound_finite_val);
-    SAFE_CUDA_FREE(state->variable_lower_bound_finite_val);
-    SAFE_CUDA_FREE(state->variable_upper_bound_finite_val);
-
     SAFE_CUDA_FREE(state->initial_primal_solution);
     SAFE_CUDA_FREE(state->current_primal_solution);
     SAFE_CUDA_FREE(state->pdhg_primal_solution);
@@ -720,7 +712,6 @@ void dual_feas_polish_state_free(pdhg_solver_state_t *state)
     SAFE_CUDA_FREE(state->dual_residual);
     SAFE_CUDA_FREE(state->delta_primal_solution);
     SAFE_CUDA_FREE(state->delta_dual_solution);
-    cupdlpx_spmv_ctx_destroy(state->spmv_ctx);
     free(state);
 }
 
