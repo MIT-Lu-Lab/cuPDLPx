@@ -176,20 +176,22 @@ compute_polish_residual_device(pdhg_solver_state_t *state, const pdhg_solver_sta
     if (is_primal_polish)
     {
         cupdlpx_spmv_Ax(state->sparse_handle, state->spmv_ctx, state->pdhg_primal_solution, state->primal_product);
-        launch_residual_check(state,
-                              ori_state->objective_vector,
-                              state->pdhg_primal_solution,
-                              state->constraint_lower_bound_finite_val,
-                              state->constraint_upper_bound_finite_val);
+        launch_primal_residual_reductions(state,
+                                          NULL,
+                                          ori_state->objective_vector,
+                                          state->pdhg_primal_solution,
+                                          state->constraint_lower_bound,
+                                          state->constraint_upper_bound);
     }
     else
     {
         cupdlpx_spmv_ATx(state->sparse_handle, state->spmv_ctx, state->pdhg_dual_solution, state->dual_product);
-        launch_residual_check(state,
-                              state->objective_vector,
-                              ori_state->pdhg_primal_solution,
-                              ori_state->constraint_lower_bound_finite_val,
-                              ori_state->constraint_upper_bound_finite_val);
+        launch_dual_residual_reductions(state,
+                                        NULL,
+                                        state->objective_vector,
+                                        ori_state->pdhg_primal_solution,
+                                        ori_state->constraint_lower_bound,
+                                        ori_state->constraint_upper_bound);
     }
 }
 
@@ -218,21 +220,26 @@ void launch_polish_fixed_point_reductions(const pdhg_solver_state_t *state,
                                           size_t *required_bytes,
                                           bool is_primal_polish)
 {
-    const double *delta = is_primal_polish ? state->delta_primal_solution : state->delta_dual_solution;
+    const double *from = is_primal_polish ? state->pdhg_primal_solution : state->pdhg_dual_solution;
+    const double *to = is_primal_polish ? state->reflected_primal_solution : state->reflected_dual_solution;
     int len = is_primal_polish ? state->num_variables : state->num_constraints;
     double *out = is_primal_polish ? &state->scalars_d->fixed_point_primal_sq : &state->scalars_d->fixed_point_dual_sq;
-    reduce_sum(state, required_bytes, len, DEVICE_FN(i) { return delta[i] * delta[i]; }, out);
+    reduce_sum(
+        state,
+        required_bytes,
+        len,
+        DEVICE_FN(i)
+        {
+            double d = to[i] - from[i];
+            return d * d;
+        },
+        out);
 }
 
 // The fixed point error of a polishing iterate: only its own side of the
 // movement term, without the square root (the restart test compares ratios).
 void compute_polish_fixed_point_error_device(pdhg_solver_state_t *state, bool is_primal_polish)
 {
-    compute_solution_difference(state,
-                                state->pdhg_primal_solution,
-                                state->reflected_primal_solution,
-                                state->pdhg_dual_solution,
-                                state->reflected_dual_solution);
     launch_polish_fixed_point_reductions(state, NULL, is_primal_polish);
 }
 
@@ -518,11 +525,6 @@ static pdhg_solver_state_t *initialize_primal_feas_polish_state(const pdhg_solve
     ALLOC_ZERO(primal_state->dual_product, num_var * sizeof(double));
 
     ALLOC_ZERO(primal_state->dual_slack, num_var * sizeof(double));
-    ALLOC_ZERO(primal_state->primal_slack, num_cons * sizeof(double));
-    ALLOC_ZERO(primal_state->dual_residual, num_var * sizeof(double));
-    ALLOC_ZERO(primal_state->primal_residual, num_cons * sizeof(double));
-    ALLOC_ZERO(primal_state->delta_primal_solution, num_var * sizeof(double));
-    ALLOC_ZERO(primal_state->delta_dual_solution, num_cons * sizeof(double));
 
     // RESET SCALAR
     primal_state->primal_weight_error_sum = 0.0;
@@ -572,12 +574,7 @@ void primal_feas_polish_state_free(pdhg_solver_state_t *state)
     SAFE_CUDA_FREE(state->pdhg_dual_solution);
     SAFE_CUDA_FREE(state->reflected_dual_solution);
     SAFE_CUDA_FREE(state->primal_product);
-    SAFE_CUDA_FREE(state->primal_slack);
     SAFE_CUDA_FREE(state->dual_slack);
-    SAFE_CUDA_FREE(state->primal_residual);
-    SAFE_CUDA_FREE(state->dual_residual);
-    SAFE_CUDA_FREE(state->delta_primal_solution);
-    SAFE_CUDA_FREE(state->delta_dual_solution);
     free(state);
 }
 
@@ -647,11 +644,6 @@ static pdhg_solver_state_t *initialize_dual_feas_polish_state(const pdhg_solver_
     ALLOC_ZERO(dual_state->pdhg_primal_solution, num_var * sizeof(double));
     ALLOC_ZERO(dual_state->reflected_primal_solution, num_var * sizeof(double));
     ALLOC_ZERO(dual_state->primal_product, num_cons * sizeof(double));
-    ALLOC_ZERO(dual_state->primal_slack, num_cons * sizeof(double));
-    ALLOC_ZERO(dual_state->dual_residual, num_var * sizeof(double));
-    ALLOC_ZERO(dual_state->primal_residual, num_cons * sizeof(double));
-    ALLOC_ZERO(dual_state->delta_primal_solution, num_var * sizeof(double));
-    ALLOC_ZERO(dual_state->delta_dual_solution, num_cons * sizeof(double));
 
     // RESET SCALAR
     dual_state->primal_weight_error_sum = 0.0;
@@ -706,12 +698,7 @@ void dual_feas_polish_state_free(pdhg_solver_state_t *state)
     SAFE_CUDA_FREE(state->reflected_dual_solution);
     SAFE_CUDA_FREE(state->primal_product);
 
-    SAFE_CUDA_FREE(state->primal_slack);
     SAFE_CUDA_FREE(state->dual_slack);
-    SAFE_CUDA_FREE(state->primal_residual);
-    SAFE_CUDA_FREE(state->dual_residual);
-    SAFE_CUDA_FREE(state->delta_primal_solution);
-    SAFE_CUDA_FREE(state->delta_dual_solution);
     free(state);
 }
 

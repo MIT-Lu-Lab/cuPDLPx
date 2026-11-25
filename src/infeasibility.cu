@@ -166,11 +166,7 @@ void launch_candidate_reductions(const pdhg_solver_state_t *state, size_t *requi
     const double bound_rescaling = state->constraint_bound_rescaling;
     const double objective_rescaling = state->objective_vector_rescaling;
     const double *variable_lower = state->variable_lower_bound, *variable_upper = state->variable_upper_bound;
-    const double *variable_lower_finite = state->variable_lower_bound_finite_val;
-    const double *variable_upper_finite = state->variable_upper_bound_finite_val;
     const double *constraint_lower = state->constraint_lower_bound, *constraint_upper = state->constraint_upper_bound;
-    const double *constraint_lower_finite = state->constraint_lower_bound_finite_val;
-    const double *constraint_upper_finite = state->constraint_upper_bound_finite_val;
 
     // primal ray d
     auto d_abs_orig = DEVICE_FN(j) { return fabs(d[j]) / (variable_rescaling[j] * bound_rescaling); };
@@ -189,13 +185,13 @@ void launch_candidate_reductions(const pdhg_solver_state_t *state, size_t *requi
     // dual ray y and its reduced cost r = -A^T y
     auto y_abs_orig = DEVICE_FN(i) { return fabs(y[i]) / (constraint_rescaling[i] * objective_rescaling); };
     auto con_bounds_term = DEVICE_FN(i)
-    { return bound_term(y[i], constraint_lower_finite[i], constraint_upper_finite[i]); };
+    { return bound_term(y[i], finite_or_zero(constraint_lower[i]), finite_or_zero(constraint_upper[i])); };
     auto con_bounds_term_abs = DEVICE_FN(i)
-    { return bound_term_abs(y[i], constraint_lower_finite[i], constraint_upper_finite[i]); };
-    auto var_bounds_term =
-        DEVICE_FN(j) { return bound_term(-ATy[j], variable_lower_finite[j], variable_upper_finite[j]); };
+    { return bound_term_abs(y[i], finite_or_zero(constraint_lower[i]), finite_or_zero(constraint_upper[i])); };
+    auto var_bounds_term = DEVICE_FN(j)
+    { return bound_term(-ATy[j], finite_or_zero(variable_lower[j]), finite_or_zero(variable_upper[j])); };
     auto var_bounds_term_abs = DEVICE_FN(j)
-    { return bound_term_abs(-ATy[j], variable_lower_finite[j], variable_upper_finite[j]); };
+    { return bound_term_abs(-ATy[j], finite_or_zero(variable_lower[j]), finite_or_zero(variable_upper[j])); };
     auto reduced_cost_violation = DEVICE_FN(j)
     { return dual_ray_reduced_cost_violation(-ATy[j], isfinite(variable_lower[j]), isfinite(variable_upper[j])); };
     auto reduced_cost_violation_orig = DEVICE_FN(j) { return reduced_cost_violation(j) * variable_rescaling[j]; };
