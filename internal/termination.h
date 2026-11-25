@@ -31,29 +31,23 @@ extern "C"
     // Copies the scalar struct to the host and waits.
     void fetch_device_scalars(pdhg_solver_state_t *state);
 
-    // state->delta_primal_solution = to_primal - from_primal, and the same for
-    // the dual vectors.
-    void compute_solution_difference(pdhg_solver_state_t *state,
-                                     const double *from_primal,
-                                     const double *to_primal,
-                                     const double *from_dual,
-                                     const double *to_dual);
-
     // Residuals and objective values from A x and A^T y already in the state.
     // Feasibility polishing passes vectors of the original problem where its own
     // state holds a modified one.
-    void launch_residual_check(pdhg_solver_state_t *state,
-                               const double *objective_vector,
-                               const double *primal_solution,
-                               const double *constraint_lower_bound_finite,
-                               const double *constraint_upper_bound_finite);
-
     // The reductions of the residual and fixed point checks; see reduce.h for
     // required_bytes.
-    void launch_residual_reductions(const pdhg_solver_state_t *state,
-                                    size_t *required_bytes,
-                                    const double *objective_vector,
-                                    const double *primal_solution);
+    void launch_primal_residual_reductions(const pdhg_solver_state_t *state,
+                                           size_t *required_bytes,
+                                           const double *objective_vector,
+                                           const double *primal_solution,
+                                           const double *constraint_lower_bound,
+                                           const double *constraint_upper_bound);
+    void launch_dual_residual_reductions(const pdhg_solver_state_t *state,
+                                         size_t *required_bytes,
+                                         const double *objective_vector,
+                                         const double *primal_solution,
+                                         const double *constraint_lower_bound,
+                                         const double *constraint_upper_bound);
     void launch_fixed_point_reductions(const pdhg_solver_state_t *state, size_t *required_bytes);
 
     void compute_residual_device(pdhg_solver_state_t *state);

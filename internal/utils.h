@@ -119,8 +119,6 @@ extern "C"
 
     void cupdlpx_spmv_ATx(cusparseHandle_t sparse_handle, void *ctx, const double *x, double *y);
 
-    void compute_interaction_and_movement(pdhg_solver_state_t *solver_state, double *interaction, double *movement);
-
     bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
                                     const restart_parameters_t *restart_params,
                                     int termination_evaluation_frequency);

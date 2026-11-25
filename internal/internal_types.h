@@ -146,10 +146,6 @@ typedef struct
     int num_blocks_nnz;
     double objective_vector_norm;
     double constraint_bound_norm;
-    double *constraint_lower_bound_finite_val;
-    double *constraint_upper_bound_finite_val;
-    double *variable_lower_bound_finite_val;
-    double *variable_upper_bound_finite_val;
 
     double *initial_primal_solution;
     double *current_primal_solution;
@@ -177,16 +173,13 @@ typedef struct
     double *variable_rescaling;
     double constraint_bound_rescaling;
     double objective_vector_rescaling;
-    double *primal_slack;
     double *dual_slack;
     double rescaling_time_sec;
     clock_t start_time;
     double cumulative_time_sec;
 
-    double *primal_residual;
     double absolute_primal_residual;
     double relative_primal_residual;
-    double *dual_residual;
     double absolute_dual_residual;
     double relative_dual_residual;
     double primal_objective_value;
@@ -201,7 +194,6 @@ typedef struct
     double dual_ray_certificate_error;
     termination_reason_t termination_reason;
 
-    double *delta_primal_solution;
     double *delta_dual_solution;
     double fixed_point_error;
     double initial_fixed_point_error;

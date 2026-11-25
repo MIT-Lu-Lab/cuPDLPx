@@ -305,26 +305,6 @@ sv_estimator_result_t sv_estimator_run(sv_estimator_ctx_t *ctx, const sv_estimat
     return result;
 }
 
-void compute_interaction_and_movement(pdhg_solver_state_t *state, double *interaction, double *movement)
-{
-    double dual_norm, primal_norm, cross_term;
-
-    CUBLAS_CHECK(
-        cublasDnrm2_v2_64(state->blas_handle, state->num_constraints, state->delta_dual_solution, 1, &dual_norm));
-    CUBLAS_CHECK(
-        cublasDnrm2_v2_64(state->blas_handle, state->num_variables, state->delta_primal_solution, 1, &primal_norm));
-    *movement = 0.5 * (primal_norm * primal_norm * state->primal_weight + dual_norm * dual_norm / state->primal_weight);
-
-    CUBLAS_CHECK(cublasDdot(state->blas_handle,
-                            state->num_variables,
-                            state->dual_product,
-                            1,
-                            state->delta_primal_solution,
-                            1,
-                            &cross_term));
-    *interaction = fabs(cross_term);
-}
-
 const char *termination_reason_to_string(termination_reason_t reason)
 {
     switch (reason)

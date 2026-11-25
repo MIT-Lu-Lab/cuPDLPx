@@ -29,6 +29,11 @@
 // The element function of a reduction: DEVICE_FN(i) { return ...; }
 #define DEVICE_FN(i) [=] __host__ __device__(int i)
 
+__host__ __device__ __forceinline__ double finite_or_zero(double v)
+{
+    return isfinite(v) ? v : 0.0;
+}
+
 // Temporary storage of cub::DeviceReduce, shared by every call. cub rejects a
 // call that needs more, and captured graphs keep its address, so it is sized
 // once by planning every reduction.
